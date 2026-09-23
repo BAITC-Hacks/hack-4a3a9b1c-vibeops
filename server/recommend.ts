@@ -1,4 +1,4 @@
-
+import type { Catalog } from './catalog.js';
 import type { RecommendResponse, Reason } from '../shared/contracts.js';
 import { selectVendors, REASON_LABELS } from './matching.js';
 import { validateQuery } from './validation.js';

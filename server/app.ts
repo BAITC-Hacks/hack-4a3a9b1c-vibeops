@@ -50,7 +50,6 @@ export function createApp(catalog: Catalog | null) {
   });
 
   app.post('/api/recommend', async (req, res, next) => {
- main
     if (!catalog) {
       res.status(503).json(
         error('DATASET_UNAVAILABLE', 'Каталог недоступен.')
