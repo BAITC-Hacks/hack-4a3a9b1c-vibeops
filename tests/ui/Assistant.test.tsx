@@ -140,14 +140,20 @@ describe('AI assistant: user-reviewed brief and preference comparison', () => {
     expect(calls('/api/recommend')).toHaveLength(0);
   });
 
-  it('clears comparison on a new assistant message and resets the dialogue', async () => {
+  it('preserves the confirmed result and comparison while editing, clearing or resetting the dialogue', async () => {
     await prepared(); confirm(); await screen.findByRole('heading', { name: 'Под ваши пожелания' });
     fireEvent.change(input(), { target: { value: 'Изменим дату.' } });
-    expect(screen.queryByRole('heading', { name: 'Под ваши пожелания' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Под ваши пожелания' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Ваша подборка' })).toBeTruthy();
+    expect(screen.getByText(/Показан результат последнего подтверждённого поиска/)).toBeTruthy();
     expect((screen.getByRole('button', { name: /Подобрать по этим условиям/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(input(), { target: { value: '' } });
+    expect(screen.getByRole('heading', { name: card().name })).toBeTruthy();
+    expect(calls('/api/recommend')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Новый запрос' }));
     expect(screen.queryByText('Можно подбирать')).toBeNull();
     expect((input() as HTMLTextAreaElement).value).toBe('');
+    expect(screen.getByRole('heading', { name: card().name })).toBeTruthy();
     send('Новое событие.'); await screen.findByText('Можно подбирать');
     expect(JSON.parse(calls('/api/assistant/brief')[1][1].body)).toEqual({ messages: ['Новое событие.'] });
   });
@@ -158,9 +164,71 @@ describe('AI assistant: user-reviewed brief and preference comparison', () => {
     api.mockResolvedValueOnce(await json(complete({ draft: unusualQuery, query: unusualQuery, preferences: [] })));
     send('Нужен фокусник на корпоратив.'); await screen.findByText('Можно подбирать'); confirm();
     await screen.findByRole('heading', { name: 'Ваша подборка' });
-    expect((screen.getByLabelText('Кого ищем') as HTMLSelectElement).value).toBe('Фокусник');
+    expect((screen.getByLabelText('Что нужно для мероприятия?') as HTMLSelectElement).value).toBe('Фокусник');
     expect(screen.getByRole('option', { name: /Фокусник/ })).toBeTruthy();
     expect(JSON.parse(calls('/api/recommend')[0][1].body).category).toBe('Фокусник');
+  });
+
+  it('keeps the manual result during a pending or failed brief and focuses the manual form without a new search', async () => {
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: /Подобрать подрядчиков/ }));
+    await screen.findByRole('heading', { name: card().name });
+    let resolveBrief!: (value: Response) => void;
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((url: string, init?: RequestInit) => url === '/api/assistant/brief'
+      ? new Promise<Response>(resolve => { resolveBrief = resolve; }) : original(url, init));
+    send('Уточню пожелания.');
+    expect(screen.getByRole('heading', { name: card().name })).toBeTruthy();
+    expect(screen.getByText(/Показан результат последнего подтверждённого поиска/)).toBeTruthy();
+    await act(async () => resolveBrief(await json({ error: { code: 'AI_UNAVAILABLE', message: 'AI недоступен.' } }, 503)));
+    fireEvent.click(await screen.findByRole('button', { name: 'Перейти к ручному подбору' }));
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Ваше мероприятие' }));
+    expect(screen.getByRole('heading', { name: card().name })).toBeTruthy();
+    expect(calls('/api/recommend')).toHaveLength(1);
+  });
+
+  it('applies corrected conditions only after confirmation and ignores the previous comparison arriving late', async () => {
+    await prepared();
+    let resolveOld!: (value: Response) => void;
+    let compareCalls = 0;
+    const original = api.getMockImplementation()!;
+    const corrected = { ...query, date: '2026-10-11', budget_kzt: 700000 };
+    api.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/assistant/brief') return json(complete({ draft: corrected, query: corrected, summary: 'Обновлённые условия' }));
+      if (url === '/api/assistant/compare' && ++compareCalls === 1) return new Promise<Response>(resolve => { resolveOld = resolve; });
+      return original(url, init);
+    });
+    confirm(); await screen.findByRole('heading', { name: card().name });
+    await waitFor(() => expect(calls('/api/assistant/compare')).toHaveLength(1));
+    const oldSignal = calls('/api/assistant/compare')[0][1].signal as AbortSignal;
+    send('Дата 11 октября 2026, бюджет 700 тысяч.');
+    await screen.findByText('Обновлённые условия');
+    expect(screen.getByRole('heading', { name: card().name })).toBeTruthy();
+    expect((screen.getByLabelText('Бюджет, ₸') as HTMLInputElement).value).toBe('1000000');
+    expect(calls('/api/recommend')).toHaveLength(1);
+    confirm();
+    await waitFor(() => expect(calls('/api/recommend')).toHaveLength(2));
+    expect(JSON.parse(calls('/api/recommend')[1][1].body)).toEqual(corrected);
+    expect(oldSignal.aborted).toBe(true);
+    await screen.findByRole('heading', { name: 'Под ваши пожелания' });
+    const stale = comparison(); stale.items[0].evidence[0].quote = 'УСТАРЕВШИЙ ОТВЕТ';
+    await act(async () => resolveOld(await json(stale)));
+    expect(screen.queryByText(/УСТАРЕВШИЙ ОТВЕТ/)).toBeNull();
+    expect(screen.queryByText(/Показан результат последнего подтверждённого поиска/)).toBeNull();
+    expect((screen.getByLabelText('Бюджет, ₸') as HTMLInputElement).value).toBe('700000');
+  });
+
+  it('keeps an in-flight confirmed search valid when only the assistant draft changes', async () => {
+    await ready();
+    let resolveSearch!: (value: Response) => void;
+    api.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveSearch = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: /Подобрать подрядчиков/ }));
+    fireEvent.change(input(), { target: { value: 'Неподтверждённое пожелание' } });
+    await act(async () => resolveSearch(await json(response())));
+    expect(screen.getByRole('heading', { name: card().name })).toBeTruthy();
+    expect(screen.getByText(/Показан результат последнего подтверждённого поиска/)).toBeTruthy();
+    expect(calls('/api/recommend')).toHaveLength(1);
+    expect(calls('/api/assistant/brief')).toHaveLength(0);
   });
 
   it('displays an impossible date as a draft needing clarification without crashing or searching', async () => {

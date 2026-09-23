@@ -130,6 +130,7 @@ export default function App() {
   const [fields, setFields] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [result, setResult] = useState<RecommendResponse | null>(null);
+  const [assistantDraftChanged, setAssistantDraftChanged] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
   const [activePreferences, setActivePreferences] = useState<string[]>([]);
@@ -140,6 +141,7 @@ export default function App() {
   const comparisonController = useRef<AbortController | null>(null);
   const comparisonSequence = useRef(0);
   const workspace = useRef<HTMLDivElement | null>(null);
+  const searchTitle = useRef<HTMLHeadingElement | null>(null);
   const controller = useRef<AbortController | null>(null);
   const sequence = useRef(0);
 
@@ -163,6 +165,7 @@ export default function App() {
   useEffect(() => () => { sequence.current += 1; controller.current?.abort(); comparisonSequence.current += 1; comparisonController.current?.abort(); }, []);
 
   const invalidate = () => {
+    setAssistantDraftChanged(false);
     sequence.current += 1;
     controller.current?.abort();
     comparisonSequence.current += 1; comparisonController.current?.abort();
@@ -233,15 +236,18 @@ export default function App() {
     <header className="site-header"><div className="header-inner"><a className="brand" href="#main"><span className="brand-mark" aria-hidden="true">f.</span>firebird<span className="brand-separator">/</span><span className="brand-description">подрядчики для событий</span></a><span className="team-label">VibeOps · HackAlem AI</span></div></header>
     <main id="main">
       <section className="intro"><p className="eyebrow">Ваше событие начинается с разговора</p><h1>Есть идея события.<br /><span>Найдём, с кем её воплотить.</span></h1><p className="intro-text">AI превратит ваше описание в условия подбора и поможет сравнить до трёх подрядчиков по тому, что важно именно вам.</p></section>
-      <Assistant canSearch={!!options && !loading} onActivity={() => { invalidate(); setActiveDemo(null); setActivePreferences([]); }} onConfirm={(query, preferences) => { const form = fromQuery(query); setValues(form); setActiveDemo(null); setActivePreferences(preferences); void run(form, preferences); workspace.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} />
+      <Assistant canSearch={!!options && !loading}
+        onActivity={() => setAssistantDraftChanged(true)}
+        onManualSearch={() => { searchTitle.current?.focus({ preventScroll: true }); workspace.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }}
+        onConfirm={(query, preferences) => { const form = fromQuery(query); setValues(form); setActiveDemo(null); setActivePreferences(preferences); void run(form, preferences); workspace.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} />
       <div className="workspace" ref={workspace}>
-        <aside className="search-panel" aria-labelledby="search-title"><div className="panel-title"><span className="step">↙</span><h2 id="search-title">Ваше мероприятие</h2></div><p className="manual-hint">Можно задать условия вручную или изменить подготовленные AI.</p>
+        <aside className="search-panel" aria-labelledby="search-title"><div className="panel-title"><span className="step">↙</span><h2 id="search-title" ref={searchTitle} tabIndex={-1}>Ваше мероприятие</h2></div><p className="manual-hint">Можно задать условия вручную или изменить подготовленные AI.</p>
           {optionsError ? <div className="error-box" role="alert"><p>{optionsError}</p><button className="secondary" onClick={() => setOptionsAttempt(value => value + 1)}>Загрузить каталог снова</button></div> : !options ? <p className="catalog-loading" role="status">Загружаем параметры каталога…</p> : null}
           <form onSubmit={submit} noValidate>
             <fieldset disabled={!options}><legend className="sr-only">Параметры подбора</legend>
               <label htmlFor="city">Город</label><select {...attributes('city')} value={values.city} onChange={event => change('city', event.target.value)}><option value="" disabled>Выберите город</option>{options?.cities.map(value => <option key={value}>{value}</option>)}</select>{fieldError('city')}
               <label htmlFor="event_format">Формат мероприятия</label><select {...attributes('event_format')} value={values.event_format} onChange={event => change('event_format', event.target.value)}><option value="" disabled>Выберите формат</option>{options?.event_formats.map(value => <option key={value}>{value}</option>)}</select>{fieldError('event_format')}
-              <label htmlFor="category">Кого ищем</label><select {...attributes('category')} value={values.category} onChange={event => change('category', event.target.value)}><option value="" disabled>Выберите категорию</option>{values.category && options && !options.categories.includes(values.category) && <option value={values.category}>{values.category} · нет в каталоге</option>}{options?.categories.map(value => <option key={value}>{value}</option>)}</select>{fieldError('category')}
+              <label htmlFor="category">Что нужно для мероприятия?</label><select {...attributes('category')} value={values.category} onChange={event => change('category', event.target.value)}><option value="" disabled>Выберите категорию</option>{values.category && options && !options.categories.includes(values.category) && <option value={values.category}>{values.category} · нет в каталоге</option>}{options?.categories.map(value => <option key={value}>{value}</option>)}</select>{fieldError('category')}
               <div className="form-row"><div><label htmlFor="date">Дата</label><input {...attributes('date')} type="date" min={options?.date_min} max={options?.date_max} value={values.date} onChange={event => change('date', event.target.value)} />{fieldError('date')}</div><div><label htmlFor="budget_kzt">Бюджет, ₸</label><input {...attributes('budget_kzt')} type="number" min="0" step="1" inputMode="numeric" value={values.budget_kzt} onChange={event => change('budget_kzt', event.target.value)} />{fieldError('budget_kzt')}</div></div>
               <p className="field-hint">Бюджет на одного подрядчика за мероприятие.</p>
               {activePreferences.length > 0 && <p className="field-hint">Пожелания для AI-сравнения: {activePreferences.join('; ')}.</p>}
@@ -257,6 +263,7 @@ export default function App() {
             {DEMOS.map(demo => <button key={demo.id} type="button" disabled={!options} aria-pressed={activeDemo === demo.id} className={`demo-button ${activeDemo === demo.id ? 'selected' : ''}`} onClick={() => { const form = fromQuery(demo.query); setValues(form); setActiveDemo(demo.id); setActivePreferences([]); void run(form); }}><span className="demo-id">{demo.id}</span><span><strong>{demo.label}</strong><small>{demo.description}</small></span></button>)}
           </div></section>
           {error && <div className="error-box" role="alert"><strong>Подбор не выполнен</strong><p>{error}</p></div>}
+          {result && assistantDraftChanged && <p className="notice" role="status">Показан результат последнего подтверждённого поиска. Черновик диалога его не меняет — подтвердите новые условия, чтобы обновить подборку.</p>}
           {loading ? <div className="loading-state" role="status"><span className="spinner" aria-hidden="true" /><h2>Проверяем условия и готовим объяснения</h2><p>Учитываем дату, бюджет и особенности мероприятия.</p></div> : result ? <Results result={result} comparison={comparison} comparisonLoading={comparisonLoading} comparisonError={comparisonError} retryComparison={() => { if (comparisonRequest) void runComparison(comparisonRequest.query, comparisonRequest.preferences, comparisonRequest.cards); }} /> : !error && <section className="welcome-state"><span className="welcome-symbol" aria-hidden="true">✳</span><h2>Здесь появится ваша подборка</h2><p>Начните с AI-помощника выше или задайте условия в форме. Покажем кандидатов, основания выбора и вопросы для обсуждения.</p><div className="welcome-points"><span>Учитываем занятость</span><span>Объясняем различия</span><span>Показываем ограничения</span></div></section>}
         </div>
       </div>
