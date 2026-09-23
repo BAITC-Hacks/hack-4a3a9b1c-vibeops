@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { catalogOptions, type Catalog } from './catalog.js';
 import type { ApiError } from '../shared/contracts.js';
 import { recommend } from './recommend.js';
+import { QueryValidationError } from './validation.js';
 
 export function createApp(catalog: Catalog | null) {
   const app = express();
@@ -48,25 +49,18 @@ export function createApp(catalog: Catalog | null) {
     res.json(catalogOptions(catalog));
   });
 
-//<<<<<<< HEAD
-  //app.post('/api/recommend', (req, res) => {
-//=======
   app.post('/api/recommend', async (req, res, next) => {
-//>>>>>>> 789fa71 (sooved some conflicts)
+ main
     if (!catalog) {
       res.status(503).json(
         error('DATASET_UNAVAILABLE', 'Каталог недоступен.')
       );
       return;
     }
-//<<<<<<< HEAD
 
-    //const result = recommend(catalog, req.body);
-
-//=======
   try {
     const result = await recommend(catalog, req.body);
-//>>>>>>> 789fa71 (sooved some conflicts)
+
     res.json(result);
   } catch (err) {
     next(err);
@@ -90,6 +84,10 @@ export function createApp(catalog: Catalog | null) {
   }
 
   const handleError: ErrorRequestHandler = (err, _req, res, _next) => {
+    if (err instanceof QueryValidationError) {
+      res.status(422).json({ error: { code: err.code, message: err.message, fields: err.fields } });
+      return;
+    }
     if (err?.type === 'entity.parse.failed') {
       res.status(400).json(
         error('MALFORMED_JSON', 'Некорректный JSON.')

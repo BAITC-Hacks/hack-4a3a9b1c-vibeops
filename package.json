@@ -13,7 +13,8 @@
     "build": "npm run typecheck && tsc -p tsconfig.server.json && vite build",
     "start": "node dist/server/index.js",
     "test": "tsx --test tests/**/*.test.ts",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test:ui": "vitest run --config tests/ui/vitest.config.mts"
   },
   "dependencies": {
     "csv-parse": "6.2.1",
@@ -24,14 +25,17 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.3",
     "@types/express": "5.0.6",
     "@types/node": "24.13.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
     "concurrently": "9.2.4",
-    "tsx": "^4.23.15",
-    "typescript": "^5.9.3",
-    "vite": "7.3.6"
+    "jsdom": "26.1.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vitest": "3.2.7"
   }
 }

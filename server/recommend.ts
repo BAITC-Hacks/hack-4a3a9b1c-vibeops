@@ -1,195 +1,129 @@
-import type { Catalog } from './catalog.js';
 
-export type RecommendRequest = {
-  city: string;
-  date: string;
-  event_format: string;
-  category: string;
-  budget_kzt: number;
-  duration_hours?: number;
-  language?: string;
-};
+import type { RecommendResponse, Reason } from '../shared/contracts.js';
+import { selectVendors, REASON_LABELS } from './matching.js';
+import { validateQuery } from './validation.js';
+import {
+  explainSelection,
+  fallbackExplanation,
+} from './explanations/index.js';
 
-export type Recommendation = {
-  id: string;
-  name: string;
-  category: string;
-  city: string;
-  price_from_kzt: number;
-  explanation: string;
-};
-
-export type RecommendResult = {
-  status: 'matched' | 'category_not_found' | 'no_match';
-  recommendations: Recommendation[];
-  message?: string;
-};
-
-export function recommend(
+export async function recommend(
   catalog: Catalog,
-  input: RecommendRequest
-): RecommendResult {
-  // Все подрядчики этой категории в городе.
-  const baseCandidates = catalog.vendors.filter(v =>
-    v.city === input.city &&
-    v.categories.includes(input.category)
+  input: unknown
+): Promise<RecommendResponse> {
+  const start = performance.now();
+
+  const query = validateQuery(input, catalog);
+  const selection = selectVendors(catalog.vendors, query);
+
+  const selected = selection.ranked.slice(0, 3);
+
+  const explanation = await explainSelection({
+    query,
+    candidates: selected,
+    dataset_sha256: catalog.sha256,
+  });
+
+  const byId = new Map(
+    explanation.items.map(item => [item.id, item])
   );
 
-  if (baseCandidates.length === 0) {
-    return {
-      status: 'category_not_found',
-      recommendations: [],
-      message:
-        `В городе ${input.city} нет подрядчиков категории «${input.category}».`,
-    };
-  }
+  const cards = selected.map(candidate => {
+    const vendor = candidate.vendor;
 
-  // Причины отказа.
-  let busyCount = 0;
-  let budgetCount = 0;
-  let formatCount = 0;
-  let durationCount = 0;
-  let languageCount = 0;
-
-  const candidates = baseCandidates.filter(v => {
-    let accepted = true;
-
-    if (v.busy_dates.includes(input.date)) {
-      busyCount++;
-      accepted = false;
-    }
-
-    if (!v.event_formats.includes(input.event_format)) {
-      formatCount++;
-      accepted = false;
-    }
-
-    if (v.price_from_kzt > input.budget_kzt) {
-      budgetCount++;
-      accepted = false;
-    }
-
-    if (
-      input.duration_hours !== undefined &&
-      v.max_hours !== null &&
-      v.max_hours < input.duration_hours
-    ) {
-      durationCount++;
-      accepted = false;
-    }
-
-    if (
-      input.language !== undefined &&
-      !v.languages.includes(input.language)
-    ) {
-      languageCount++;
-      accepted = false;
-    }
-
-    return accepted;
-  });
-
-  if (candidates.length === 0) {
-    const reasons: string[] = [];
-
-    if (busyCount)
-      reasons.push(`заняты на дату — ${busyCount}`);
-
-    if (budgetCount)
-      reasons.push(`выше бюджета — ${budgetCount}`);
-
-    if (formatCount)
-      reasons.push(`не работают с форматом — ${formatCount}`);
-
-    if (durationCount)
-      reasons.push(`не подходят по длительности — ${durationCount}`);
-
-    if (languageCount)
-      reasons.push(`не подходят по языку — ${languageCount}`);
+    const evidence =
+      byId.get(vendor.id) ??
+      fallbackExplanation(query, candidate);
 
     return {
-      status: 'no_match',
-      recommendations: [],
-      message:
-        `В категории найдено ${baseCandidates.length} профилей, но подходящих нет. ` +
-        reasons.join('; ') +
-        '.',
+      id: vendor.id,
+      name: vendor.anon_name,
+      category: query.category,
+      categories: vendor.categories,
+      city: vendor.city,
+      price_from_kzt: vendor.price_from_kzt,
+      languages: vendor.languages,
+      max_hours: vendor.max_hours,
+
+      synthetic: vendor.synthetic,
+      city_imputed: vendor.city_imputed,
+      price_imputed: vendor.price_imputed,
+
+      relevance_score: candidate.relevance_score,
+      matched_terms: candidate.matched_terms,
+
+      explanation: evidence.text,
+      evidence_quote: evidence.quote,
+      explanation_source: evidence.source,
     };
-  }
-
-  // Детерминированная сортировка.
-  candidates.sort((a, b) => {
-    if (a.price_from_kzt !== b.price_from_kzt) {
-      return a.price_from_kzt - b.price_from_kzt;
-    }
-
-    return a.id.localeCompare(b.id);
   });
 
-  const recommendations = candidates
-    .slice(0, 3)
-    .map(v => {
-      const reasons: string[] = [];
+  const llmCount = cards.filter(
+    c => c.explanation_source === 'llm'
+  ).length;
 
-      reasons.push(
-        `Цена от ${v.price_from_kzt.toLocaleString('ru-RU')} ₸ укладывается в бюджет ${input.budget_kzt.toLocaleString('ru-RU')} ₸.`
-      );
+  const mode =
+    !cards.length
+      ? 'not_needed'
+      : llmCount === cards.length
+        ? 'llm'
+        : llmCount
+          ? 'mixed'
+          : 'fallback';
 
-      if (input.language) {
-        reasons.push(`Работает на языке: ${input.language}.`);
-      } else if (v.languages.length > 1) {
-        reasons.push(
-          `Работает на языках: ${v.languages.join(', ')}.`
+  const causes = (
+    Object.entries(selection.rejection_counts) as [Reason, number][]
+  )
+    .filter(([, n]) => n)
+    .map(
+      ([reason, n]) =>
+        `${REASON_LABELS[reason]} — ${n}`
+    )
+    .join('; ');
+
+  const message =
+    selection.outcome === 'no_category_in_city'
+      ? `В городе ${query.city} в каталоге нет категории «${query.category}».`
+      : `В городе в этой категории ${selection.base_count} профилей; подходят ${selection.eligible_count}, показаны ${cards.length}.` +
+        (
+          selection.rejected.length
+            ? ` Исключены ${selection.rejected.length}: ${causes}; причины могут пересекаться.`
+            : selection.eligible_count > cards.length
+              ? ' Показаны первые три по устойчивому порядку.'
+              : ' Показаны все доступные в каталоге профили этой категории.'
         );
-      }
-
-      if (
-        input.duration_hours !== undefined &&
-        v.max_hours !== null
-      ) {
-        reasons.push(
-          `Может работать до ${v.max_hours} ч., запрос рассчитан на ${input.duration_hours} ч.`
-        );
-      }
-
-      return {
-        id: v.id,
-        name: v.anon_name,
-        category: input.category,
-        city: v.city,
-        price_from_kzt: v.price_from_kzt,
-        explanation: reasons.slice(0, 2).join(' '),
-      };
-    });
-
-  let message =
-    `Подходят ${candidates.length} из ${baseCandidates.length} профилей. ` +
-    `Показаны ${recommendations.length}.`;
-
-  if (baseCandidates.length > candidates.length) {
-    const rejectedReasons: string[] = [];
-
-    if (busyCount)
-      rejectedReasons.push(`заняты — ${busyCount}`);
-
-    if (budgetCount)
-      rejectedReasons.push(`выше бюджета — ${budgetCount}`);
-
-    if (formatCount)
-      rejectedReasons.push(`не берут формат — ${formatCount}`);
-
-    if (durationCount)
-      rejectedReasons.push(`не подходят по длительности — ${durationCount}`);
-
-    if (languageCount)
-      rejectedReasons.push(`не подходят по языку — ${languageCount}`);
-
-    message += ` Исключены: ${rejectedReasons.join('; ')}.`;
-  }
 
   return {
-    status: 'matched',
-    recommendations,
-    message,
+    outcome: selection.outcome,
+
+    query,
+
+    cards,
+
+    summary: {
+      base_count: selection.base_count,
+      eligible_count: selection.eligible_count,
+      returned_count: cards.length,
+      rejected_count: selection.rejected.length,
+      rejection_counts: selection.rejection_counts,
+      message,
+      rejected: selection.rejected,
+    },
+
+    explanation: {
+      mode,
+      model: llmCount ? explanation.model : null,
+      cached: explanation.cached,
+      warning:
+        mode !== explanation.mode
+          ? 'Некоторые объяснения восстановлены из каталога без AI.'
+          : explanation.warning,
+    },
+
+    meta: {
+      dataset_sha256: catalog.sha256,
+      ranking_version: 'v1',
+      elapsed_ms: Math.round(performance.now() - start),
+    },
   };
 }
