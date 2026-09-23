@@ -49,7 +49,7 @@ export function createApp(catalog: Catalog | null) {
     res.json(catalogOptions(catalog));
   });
 
-  app.post('/api/recommend', async (req, res) => {
+  app.post('/api/recommend', async (req, res, next) => {
     if (!catalog) {
       res.status(503).json(
         error('DATASET_UNAVAILABLE', 'Каталог недоступен.')
@@ -57,9 +57,13 @@ export function createApp(catalog: Catalog | null) {
       return;
     }
 
+  try {
     const result = await recommend(catalog, req.body);
 
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
   });
 
   app.use('/api', (_req, res) => {
@@ -79,6 +83,7 @@ export function createApp(catalog: Catalog | null) {
   }
 
   const handleError: ErrorRequestHandler = (err, _req, res, _next) => {
+console.error(err);
     if (err instanceof QueryValidationError) {
       res.status(422).json({ error: { code: err.code, message: err.message, fields: err.fields } });
       return;

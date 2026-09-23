@@ -29,7 +29,7 @@ test('missing config produces honest, individual deterministic fallback', async 
   assert.equal(new Set(result.items.map(x => x.quote)).size, 3);
   for (const [index, item] of result.items.entries()) {
     assert.equal(item.source, 'fallback'); assert.ok(candidates[index]!.vendor.description.includes(item.quote!));
-    assert.match(item.text, /стартовая цена от 700/u); assert.match(item.text, /занятость не отмечена/u);
+    assert.match(item.text, /цена от 700/u); assert.match(item.text, /занятость не отмечена/u);
   }
 });
 
@@ -116,8 +116,8 @@ test('cache never exceeds 200 entries and does not retain transient failures', a
 test('null hours semantics and absent useful evidence do not invent claims', () => {
   const row = candidate('X', 'Лучший профессиональный ответственный исполнитель.'); row.vendor.max_hours = null;
   const result = fallbackExplanation({ ...query, hours: 5, language: 'русский' }, row);
-  assert.equal(result.quote, null); assert.match(result.text, /ограничение часов присутствия не применимо/u);
-  assert.match(result.text, /язык по каталогу — русский/u); assert.doesNotMatch(result.text, /неограниченн|гарантир/u);
+  assert.equal(result.quote, null); assert.match(result.text, /часы присутствия не ограничивают подбор/u);
+  assert.match(result.text, /язык — русский/u); assert.doesNotMatch(result.text, /неограниченн|гарантир/u);
 });
 
 test('caller contract violations fail before API call', async () => {
@@ -151,4 +151,34 @@ test('SDK adapter disables automatic retries on 429', async t => {
   t.mock.method(globalThis, 'fetch', async () => { requests++; return new Response('{"error":{"message":"rate limit"}}', { status: 429, headers: { 'content-type': 'application/json' } }); });
   await assert.rejects(requestEvidence({ ...input, ...config(), signal: new AbortController().signal }));
   assert.equal(requests, 1);
+});
+
+
+test('verbatim generic praise is rejected even when the model labels it as evidence', async () => {
+  const quote = 'Идеальный выбор для корпоративного мероприятия.';
+  const rows = [candidate('A', `${quote} Проводит командные игры и интерактивы.`)];
+  const result = await createExplainer({ config, provider: async () => ({ items: [{ id: 'A', quote }] }) })({ ...input, candidates: rows });
+  assert.equal(result.mode, 'fallback');
+  assert.equal(result.items[0]!.quote, 'Проводит командные игры и интерактивы.');
+  assert.ok(result.items[0]!.text.startsWith('В описании:'));
+  assert.doesNotMatch(result.items[0]!.text, /Идеальный выбор/u);
+});
+
+test('praise-only profiles disclose the absence of a specific feature', () => {
+  const row = candidate('X', 'Идеальный выбор для корпоративного мероприятия.');
+  const result = fallbackExplanation(query, row);
+  assert.equal(result.quote, null);
+  assert.match(result.text, /Конкретная особенность в описании не выделена/u);
+  assert.doesNotMatch(result.text, /Идеальный|лучший/u);
+});
+
+test('readable explanations preserve price, date and requested constraints without promising a booking', () => {
+  const row = candidate('A', 'Проводит командные игры и интерактивы.');
+  const result = fallbackExplanation({ ...query, hours: 4, language: 'русский' }, row);
+  assert.ok(result.text.indexOf('командные игры') < result.text.indexOf('цена от'));
+  assert.match(result.text, /10\.10\.2026/u);
+  assert.match(result.text, /4 ч при максимуме 6 ч/u);
+  assert.match(result.text, /язык — русский/u);
+  assert.match(result.text, /занятость не отмечена/u);
+  assert.doesNotMatch(result.text, /бронирование подтверждено|гарантированно свободен/u);
 });

@@ -32,6 +32,7 @@ export type Card = {
   explanation_source: 'llm'|'fallback';
 };
 export type RecommendResponse = {
+  decision_support?: import('./decision-support.js').DecisionSupport; // optional during rollout
   outcome: Selection['outcome']; query: Query; cards: Card[];
   summary: {base_count: number; eligible_count: number; returned_count: number;
     rejected_count: number; rejection_counts: Record<Reason,number>;
