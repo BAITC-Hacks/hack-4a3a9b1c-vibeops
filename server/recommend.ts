@@ -1,4 +1,4 @@
-import type { Catalog } from './catalog.js';
+ import type { Catalog } from './catalog.js';
 import type { Vendor } from '../shared/contracts.js';
 
 export type RecommendRequest = {
@@ -7,7 +7,7 @@ export type RecommendRequest = {
   event_format: string;
   category: string;
   budget_kzt: number;
-  duration_hours?: number;
+  hours?: number;
   language?: string;
 };
 
