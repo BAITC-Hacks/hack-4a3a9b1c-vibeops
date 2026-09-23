@@ -1,0 +1,107 @@
+{
+  "scope": "Computed from selectVendors on organizer CSV with a one-off verification script; not proof of HTTP/UI integration",
+  "dataset_sha256": "6a724b6b7dfb5973343e68ba18dadb60fc807d87e3d78f03ee86fb26cb089f7d",
+  "examples": [
+    {
+      "case": "D3",
+      "query": {
+        "city": "Алматы",
+        "date": "2026-10-10",
+        "event_format": "свадьба",
+        "category": "Флорист",
+        "budget_kzt": 500000,
+        "hours": null,
+        "language": null
+      },
+      "original_count": 1,
+      "date": {
+        "kind": "date",
+        "query": {
+          "city": "Алматы",
+          "date": "2026-10-09",
+          "event_format": "свадьба",
+          "category": "Флорист",
+          "budget_kzt": 500000,
+          "hours": null,
+          "language": null
+        },
+        "eligible_count": 2,
+        "new_vendor_ids": [
+          "HK-90001"
+        ],
+        "title": "Дата 09.10.2026",
+        "source": "catalog",
+        "explanation": "Если выбрать 09.10.2026 при прежнем бюджете, число подходящих профилей вырастет с 1 до 2; новых относительно исходного запроса — 1. Остальные условия сохранены; занятость проверена по каталогу, бронирование не подтверждено."
+      },
+      "budget": null
+    },
+    {
+      "case": "D5",
+      "query": {
+        "city": "Алматы",
+        "date": "2026-10-10",
+        "event_format": "корпоратив",
+        "category": "Ведущий",
+        "budget_kzt": 1,
+        "hours": null,
+        "language": null
+      },
+      "original_count": 0,
+      "date": null,
+      "budget": {
+        "kind": "budget",
+        "query": {
+          "city": "Алматы",
+          "date": "2026-10-10",
+          "event_format": "корпоратив",
+          "category": "Ведущий",
+          "budget_kzt": 500000,
+          "hours": null,
+          "language": null
+        },
+        "eligible_count": 1,
+        "new_vendor_ids": [
+          "HK-88430"
+        ],
+        "title": "Бюджет 500 000 ₸",
+        "source": "catalog",
+        "explanation": "Если увеличить бюджет на 499 999 ₸, до 500 000 ₸, при прежней дате, число подходящих профилей вырастет с 0 до 1; новых относительно исходного запроса — 1. Остальные условия сохранены; сравниваются цены «от», окончательную стоимость нужно уточнить."
+      }
+    },
+    {
+      "case": "D6",
+      "query": {
+        "city": "Алматы",
+        "date": "2026-11-14",
+        "event_format": "свадьба",
+        "category": "Банкетный зал",
+        "budget_kzt": 5000000,
+        "hours": null,
+        "language": null
+      },
+      "original_count": 2,
+      "date": {
+        "kind": "date",
+        "query": {
+          "city": "Алматы",
+          "date": "2026-11-13",
+          "event_format": "свадьба",
+          "category": "Банкетный зал",
+          "budget_kzt": 5000000,
+          "hours": null,
+          "language": null
+        },
+        "eligible_count": 5,
+        "new_vendor_ids": [
+          "HK-50695",
+          "HK-58236",
+          "HK-69010"
+        ],
+        "title": "Дата 13.11.2026",
+        "source": "catalog",
+        "explanation": "Если выбрать 13.11.2026 при прежнем бюджете, число подходящих профилей вырастет с 2 до 5; новых относительно исходного запроса — 3. Остальные условия сохранены; занятость проверена по каталогу, бронирование не подтверждено."
+      },
+      "budget": null
+    }
+  ]
+}
