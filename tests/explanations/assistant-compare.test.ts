@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Query, Vendor } from '../../shared/contracts.js';
 import type { Catalog } from '../../server/catalog.js';
+import { loadCatalog } from '../../server/catalog.js';
 import { AssistantError } from '../../server/explanations/assistant-brief.js';
 import { createComparisonAssistant, requestComparison, type ComparisonProvider } from '../../server/explanations/assistant-compare.js';
 import { selectVendors } from '../../server/matching.js';
@@ -283,4 +284,39 @@ test('Responses adapter does not retry errors, and rejects malformed or incomple
   mode = 2;
   await assert.rejects(requestComparison(args), rejects(502));
   assert.equal(calls, 3);
+});
+
+test('reported gift comparison request uses profile-bound quote enums and accepts a conforming SDK response', async t => {
+  const actualCatalog = loadCatalog('data/vendors.csv');
+  const giftQuery: Query = { city: 'Алматы', date: '2026-09-23', event_format: 'свадьба', category: 'Подарки и сувениры', budget_kzt: 6_000_000, hours: null, language: null };
+  const wishes = ['именные открытки', 'сладости с индивидуальным дизайном'];
+  const gift = actualCatalog.vendors.find(vendor => vendor.id === 'HK-90005')!;
+  const selected = selectVendors(actualCatalog.vendors, giftQuery).ranked.slice(0, 3);
+  assert.deepEqual(selected.map(candidate => candidate.vendor.id), ['HK-60927', 'HK-90005']);
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (request: RequestInfo | URL, init?: RequestInit) => {
+    calls++;
+    assert.equal(String(request), 'https://api.openai.com/v1/responses');
+    const body = JSON.parse(String(init?.body));
+    const variants = body.text.format.schema.properties.items.items.anyOf;
+    assert.equal(body.text.format.strict, true);
+    for (const candidate of selected) {
+      const variant = variants.find((variant: { properties: { id: { enum: string[] } } }) => variant.properties.id.enum[0] === candidate.vendor.id);
+      const quoteSchema = variant.properties.evidence.items.properties.quote;
+      assert.ok(Array.isArray(quoteSchema.enum) && quoteSchema.enum.length > 0, 'quotes must not be unrestricted strings');
+      assert.ok(quoteSchema.enum.every((quote: string) => candidate.vendor.description.includes(quote)));
+      assert.deepEqual(variant.properties.evidence.items.properties.preference.enum, wishes);
+      if (candidate.vendor.id === gift.id) assert.deepEqual(quoteSchema.enum, [gift.description]);
+    }
+    const raw = { items: selected.map(({ vendor }) => ({ id: vendor.id, evidence: vendor.id === gift.id ? wishes.map(preference => ({ preference, quote: gift.description })) : [] })) };
+    return new Response(JSON.stringify({ id: 'stub', object: 'response', status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: JSON.stringify(raw), annotations: [] }] }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  const result = await createComparisonAssistant({ config })(actualCatalog, { query: giftQuery, preferences: wishes });
+  assert.equal(calls, 1);
+  assert.equal(result.source, 'llm');
+  assert.deepEqual(result.items.map(item => item.id), selected.map(candidate => candidate.vendor.id));
+  const item = result.items.find(item => item.id === gift.id)!;
+  assert.deepEqual(item.evidence, wishes.map(preference => ({ preference, quote: gift.description })));
+  assert.deepEqual(item.to_confirm, []);
+  assert.deepEqual(result.items[0].to_confirm, wishes);
 });
