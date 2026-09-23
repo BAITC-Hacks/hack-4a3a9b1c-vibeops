@@ -442,3 +442,30 @@ test('a truncated date quote cannot erase an explicit out-of-range year or alter
   assert.equal(ambiguous.query, null);
   assert.equal(ambiguous.draft.date, null);
 });
+
+test('four screenshot follow-ups retain unchanged fields and convert Cyrillic or Latin k dollars', async () => {
+  const intro = 'Нужен ведущий на корпоратив в Алматы 10 октября 2026, до 1 миллиона тенге, на русском, на 5 часов. Хочу интеллигентный юмор, танцы и программу без долгих речей.';
+  const messages = [intro, 'поменяй на 11 октября', 'поменяй город на астану'];
+  const preferences = ['интеллигентный юмор', 'танцы', 'программа без долгих речей'];
+  const twoCities: Catalog = { ...catalog, vendors: [...catalog.vendors, { ...catalog.vendors[0]!, id: 'V2', city: 'Астана' }] };
+  const original = { ...fullDraft, date: '2026-10-10', event_format: 'корпоратив', budget_kzt: 1000000, language: 'русский', hours: 5 };
+  for (const count of [1, 2, 3]) {
+    const expected = { ...original, ...(count >= 2 ? { date: '2026-10-11' } : {}), ...(count >= 3 ? { city: 'Астана' } : {}) };
+    const raw = extraction(expected, { preferences, required_languages: ['русский'], date_source: count >= 2 ? '11 октября' : '10 октября 2026', budget_source: '1 миллиона тенге' });
+    const result = await createBriefAssistant({ config, now: referenceNow, provider: async input => {
+      assert.deepEqual(input.messages, messages.slice(0, count));
+      return raw;
+    } })(twoCities, { messages: messages.slice(0, count) });
+    assert.deepEqual(result.query, expected);
+    assert.deepEqual(result.preferences, preferences);
+  }
+  for (const amount of ['30к долларов', '30k долларов']) {
+    const fullHistory = [...messages, `поменяй бюджет на ${amount}`];
+    const expected = { ...original, date: '2026-10-11', city: 'Астана', budget_kzt: 13435500 };
+    const raw = extraction({ ...expected, budget_kzt: null }, { preferences, required_languages: ['русский'], date_source: '11 октября', budget_source: amount });
+    const result = await createBriefAssistant({ config, now: referenceNow, provider: async () => raw, exchangeRate: async currency => ({ currency, kzt_per_unit: 447.85, date: '2026-09-23', source_url: 'https://nationalbank.kz/fixture' }) })(twoCities, { messages: fullHistory });
+    assert.deepEqual(result.query, expected, amount);
+    assert.deepEqual(result.preferences, preferences);
+    assert.match(result.warnings.join(' '), /30\s000 USD/u);
+  }
+});
