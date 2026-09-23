@@ -1,14 +1,14 @@
 {
   "checked_at": "2026-09-23",
   "timezone": "Asia/Almaty",
-  "production_code_commit": "3de000c7bbaaba655d8ffc8b5453db51ac1acfca",
+  "production_code_commit": "a84cc6b7d9297e0aea1ec728f24dd52ee654887c",
   "dataset_sha256": "6a724b6b7dfb5973343e68ba18dadb60fc807d87e3d78f03ee86fb26cb089f7d",
   "backend_tests": {
-    "pass": 128,
+    "pass": 130,
     "fail": 0
   },
   "ui_tests": {
-    "pass": 58,
+    "pass": 61,
     "fail": 0
   },
   "npm_audit_known_vulnerabilities": 0,
@@ -18,76 +18,86 @@
       {
         "name": "relative USD",
         "pass": true,
-        "ms": 3627
+        "ms": 4487
       },
       {
         "name": "guest count is not money",
         "pass": true,
-        "ms": 3129
+        "ms": 6655
       },
       {
         "name": "guest count with valid budget",
         "pass": true,
-        "ms": 6732
+        "ms": 3613
       },
       {
         "name": "relative three days",
         "pass": true,
-        "ms": 3525
+        "ms": 3955
       },
       {
         "name": "USD then KZT correction",
         "pass": true,
-        "ms": 2782
+        "ms": 3756
       },
       {
         "name": "unsupported currency",
         "pass": true,
-        "ms": 3189
+        "ms": 3155
       },
       {
         "name": "multiple mandatory languages",
         "pass": true,
-        "ms": 3543
+        "ms": 3380
       },
       {
         "name": "missing category",
         "pass": true,
-        "ms": 2496
+        "ms": 3225
       },
       {
         "name": "weekday this Friday",
         "pass": true,
-        "ms": 2846
+        "ms": 3687
       },
       {
         "name": "weekday next Friday",
         "pass": true,
-        "ms": 2640
+        "ms": 3247
       },
       {
         "name": "day and month without year",
         "pass": true,
-        "ms": 3114
+        "ms": 3372
       },
       {
         "name": "negative date correction",
         "pass": true,
-        "ms": 3221
+        "ms": 3484
       },
       {
         "name": "two weeks",
         "pass": true,
-        "ms": 2738
+        "ms": 3654
       },
       {
         "name": "alternative dates need clarification",
         "pass": true,
-        "ms": 3096
+        "ms": 3182
+      },
+      {
+        "name": "explicit screenshot correction",
+        "pass": true,
+        "ms": 3618
+      },
+      {
+        "name": "explicit year outside catalog",
+        "pass": true,
+        "ms": 2664
       }
     ],
     "summary": {
-      "total": 14,
+      "total": 16,
       "failed": 0
     }
   },
@@ -173,7 +183,13 @@
   },
   "limitations": [
     "Two intermediate AI_INVALID_RESPONSE failures were not reproduced; original raw failure causes unknown.",
-    "Final live production browser check unavailable; prior dev browser and component checks do not replace it.",
     "Second physical computer, jury AI access and platform submission are not confirmed."
-  ]
+  ],
+  "browser_live": {
+    "status": "PASS",
+    "report": "release-browser/report.json",
+    "real_api": true,
+    "cases": 4,
+    "javascript_errors": 0
+  }
 }

@@ -39,6 +39,8 @@ try {
  await check('negative date correction',['Нужен ведущий на свадьбу в Алматы не завтра, а послезавтра, бюджет 500 тысяч тенге.'],b=>{assert.ok(b.query);assert.equal(b.query.date,next(2));});
  await check('two weeks',['Нужен ведущий на свадьбу в Алматы через две недели, бюджет 500 тысяч тенге.'],b=>{assert.ok(b.query);assert.equal(b.query.date,next(14));});
  await check('alternative dates need clarification',['Нужен ведущий на свадьбу в Алматы в пятницу или субботу, бюджет 500 тысяч тенге.'],b=>{assert.equal(b.query,null);assert.equal(b.draft.date,null);});
+ await check('explicit screenshot correction',['Нужен ведущий на корпоратив в Алматы 10 октября 2026 года, бюджет до 1 миллиона тенге.','Нет, поменяй на 11 октября 2026, бюджет 700 тысяч. Остальное оставь'],b=>{assert.ok(b.query);assert.equal(b.query.date,'2026-10-11');assert.equal(b.query.budget_kzt,700000);});
+ await check('explicit year outside catalog',['Нужен ведущий на свадьбу в Алматы 11 октября 2027, бюджет 500 тысяч тенге.'],b=>{assert.equal(b.query,null);assert.equal(b.draft.date,'2027-10-11');assert.ok(b.questions.length);});
 
  if(failed)process.exitCode=1;
  console.log(JSON.stringify({total:report.length,failed}));

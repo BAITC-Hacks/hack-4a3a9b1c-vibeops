@@ -1,0 +1,96 @@
+{
+  "origin": "http://127.0.0.1:3159",
+  "at": "2026-09-23T12:14:02.999Z",
+  "cases": [
+    {
+      "name": "relative-date-usd-confirm",
+      "status": "PASS",
+      "query": {
+        "city": "Алматы",
+        "category": "Ведущий",
+        "event_format": "свадьба",
+        "date": "2026-09-25",
+        "budget_kzt": 223925,
+        "hours": null,
+        "language": null
+      },
+      "warnings": [
+        "Дата «Нужен ведущий на свадьбу в Алматы послезавтра, бюджет 500 долларов» рассчитана как 2026-09-25. Сегодня 2026-09-23, часовой пояс Asia/Almaty. Для дня недели или даты без года выбираем ближайшее наступление; «следующий» день недели — в следующей календарной неделе. Проверьте дату перед подтверждением условий.",
+        "Приблизительный пересчёт: 500 USD ≈ 223 925 ₸; 1 USD = 447,85 ₸, курс на 2026-09-23. Источник: https://nationalbank.kz/rss/rates_all.xml. Банк может использовать другой курс. Подтвердите сумму в тенге перед поиском."
+      ],
+      "outcome": "no_matches",
+      "ids": []
+    },
+    {
+      "name": "confirmed-result-survives-draft-and-reset",
+      "status": "PASS"
+    },
+    {
+      "name": "gifts-live-comparison",
+      "status": "PASS",
+      "query": {
+        "city": "Алматы",
+        "category": "Подарки и сувениры",
+        "event_format": "свадьба",
+        "date": "2026-09-23",
+        "budget_kzt": 6000000,
+        "hours": null,
+        "language": null
+      },
+      "preferences": [
+        "Именные открытки",
+        "Сладости с индивидуальным дизайном"
+      ],
+      "ids": [
+        "HK-60927",
+        "HK-90005"
+      ],
+      "comparison": {
+        "items": [
+          {
+            "id": "HK-60927",
+            "name": "Нико Робин",
+            "evidence": [
+              {
+                "preference": "Сладости с индивидуальным дизайном",
+                "quote": "Konpeito Craft — производство леденцов без сахара с индивидуальным дизайном для ваших значимых событий."
+              }
+            ],
+            "to_confirm": [
+              "Именные открытки"
+            ]
+          },
+          {
+            "id": "HK-90005",
+            "name": "Виолетта Эвергарден",
+            "evidence": [
+              {
+                "preference": "Именные открытки",
+                "quote": "Letters & Sweets — именные открытки и подарочные наборы для гостей мероприятия: карточки рассадки, welcome-боксы, сладости с индивидуальным дизайном под тематику события."
+              },
+              {
+                "preference": "Сладости с индивидуальным дизайном",
+                "quote": "Letters & Sweets — именные открытки и подарочные наборы для гостей мероприятия: карточки рассадки, welcome-боксы, сладости с индивидуальным дизайном под тематику события."
+              }
+            ],
+            "to_confirm": []
+          }
+        ],
+        "source": "llm",
+        "model": "gpt-6-sol"
+      }
+    },
+    {
+      "name": "late-live-brief-after-manual-edit",
+      "status": "PASS",
+      "mechanism": "Real API response delivered late using browser routing; source content unchanged."
+    }
+  ],
+  "errors": [],
+  "screenshots": [
+    "01-confirm-date-usd.png",
+    "02-gifts-live-comparison.png"
+  ],
+  "status": "PASS",
+  "production_code_commit": "a84cc6b7d9297e0aea1ec728f24dd52ee654887c"
+}
