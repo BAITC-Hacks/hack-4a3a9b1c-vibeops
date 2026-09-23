@@ -48,17 +48,29 @@ export function createApp(catalog: Catalog | null) {
     res.json(catalogOptions(catalog));
   });
 
-  app.post('/api/recommend', (req, res) => {
+//<<<<<<< HEAD
+  //app.post('/api/recommend', (req, res) => {
+//=======
+  app.post('/api/recommend', async (req, res, next) => {
+//>>>>>>> 789fa71 (sooved some conflicts)
     if (!catalog) {
       res.status(503).json(
         error('DATASET_UNAVAILABLE', 'Каталог недоступен.')
       );
       return;
     }
+//<<<<<<< HEAD
 
-    const result = recommend(catalog, req.body);
+    //const result = recommend(catalog, req.body);
 
+//=======
+  try {
+    const result = await recommend(catalog, req.body);
+//>>>>>>> 789fa71 (sooved some conflicts)
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
   });
 
   app.use('/api', (_req, res) => {
