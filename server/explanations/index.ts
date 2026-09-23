@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ExplainResult, Query, RankedVendor } from '../../shared/contracts.js';
-import { buildExplanation, fallbackExplanation, verifiedQuote } from './evidence.js';
+import { buildExplanation, fallbackExplanation, verifiedQuote, usefulEvidenceOptions } from './evidence.js';
 import { PROMPT_VERSION, requestEvidence, type EvidenceProvider } from './provider.js';
 export { fallbackExplanation } from './evidence.js';
 
@@ -67,11 +67,12 @@ export function createExplainer(deps: Dependencies = {}): (input: ExplainInput) 
       }
       const items = candidates.map(c => {
         const quote = duplicates.has(c.vendor.id) ? null : verifiedQuote(c.vendor.description, quotes.get(c.vendor.id));
-        return quote ? buildExplanation(query, c, quote, 'llm') : fallbackExplanation(query, c);
+        const useful = quote && usefulEvidenceOptions(query, c.vendor.description).includes(quote);
+        return useful ? buildExplanation(query, c, quote, 'llm') : fallbackExplanation(query, c);
       });
       const llmCount = items.filter(i => i.source === 'llm').length;
       const mode = llmCount === items.length ? 'llm' : llmCount === 0 ? 'fallback' : 'mixed';
-      const warning = mode !== 'llm' ? 'Для части или всех карточек AI не дал проверяемой цитаты; использовано извлечение из каталога без LLM.'
+      const warning = mode !== 'llm' ? 'Для части или всех карточек AI не дал проверяемого конкретного основания; использовано извлечение из каталога без LLM.'
         : extraInvalid ? 'Некорректные дополнительные элементы ответа AI отброшены.' : null;
       const result: ExplainResult = { items, mode, warning, model: llmCount ? model : null, cached: false };
       // Transient failures/mixed results never persist in cache.
