@@ -1,4 +1,3 @@
-
 import type { RecommendResponse, Reason } from '../shared/contracts.js';
 import { selectVendors, REASON_LABELS } from './matching.js';
 import { validateQuery } from './validation.js';
@@ -6,6 +5,7 @@ import {
   explainSelection,
   fallbackExplanation,
 } from './explanations/index.js';
+import { buildDecisionSupport } from './alternatives.js';
 
 export async function recommend(
   catalog: Catalog,
