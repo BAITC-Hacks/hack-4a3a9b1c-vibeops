@@ -57,3 +57,9 @@ npx vitest run --config tests/ui/vitest.config.mts
 После `npm ci` из общего lockfile успешно выполнены `npm run build` (включая оба TypeScript-проекта) и `npm test` — 17 штатных тестов. UI-тесты проверяются отдельно: общий npm test пока запускает только *.test.ts, не UI *.test.tsx. Владелец package.json должен добавить UI devDependencies и команду из раздела выше; по одному npm test нельзя утверждать, что UI-тесты запускались.
 
 Проверен production UI в Edge с настоящим Express и исходным CSV, без подмен API: health сообщает 66 профилей, форма загружает 17 глобальных категорий; текущий POST /api/recommend возвращает 501 NOT_IMPLEMENTED и отображается явной ошибкой. Это подтверждает подключение UI к каркасу, но не работу ещё отсутствующего matching. После реализации Никитой нужно повторить D1–D6 и live AI сквозным сценарием.
+
+## Подключение UI к main — 23.09, около 14:10 UTC+5
+
+В интеграционной ветке codex/integrate-ui объединён feat/ui с main 249c861 (включая AI v3). Добавлены закреплённые devDependencies vitest 3.2.7, jsdom 26 и @testing-library/react 16 и команда npm run test:ui. Выполнены npm run build, npm test (21 проверка) и npm run test:ui (24 проверки), все успешно.
+
+Backend Никиты 98b7300 отдельно проверен и НЕ включён: возвращает Vendor[] вместо RecommendResponse, language:null исключает все профили D1, duration_hours расходится с hours, отсутствует валидация. На main до исправления остаётся явный 501; UI корректно отображает ошибку. Полный подбор ещё не подтверждён.
