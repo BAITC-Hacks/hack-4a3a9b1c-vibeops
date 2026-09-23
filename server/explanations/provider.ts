@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import type { Query, RankedVendor } from '../../shared/contracts.js';
 import { evidenceOptions } from './evidence.js';
 
-export const PROMPT_VERSION = 'firebird-evidence-v2';
+export const PROMPT_VERSION = 'firebird-evidence-v3';
 export type ProviderInput = { query: Query; candidates: RankedVendor[]; apiKey: string; model: string; signal: AbortSignal };
 export type EvidenceProvider = (input: ProviderInput) => Promise<unknown>;
 
