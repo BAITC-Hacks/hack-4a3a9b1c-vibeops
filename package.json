@@ -17,7 +17,7 @@
     "test:ui": "vitest run --config tests/ui/vitest.config.mts"
   },
   "dependencies": {
-    "csv-parse": "6.2.1",
+    "csv-parse": "7.0.2",
     "dotenv": "17.4.2",
     "express": "5.2.1",
     "openai": "7.23.0",
@@ -36,6 +36,6 @@
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vite": "7.3.6",
-    "vitest": "3.2.7"
+    "vitest": "5.0.1"
   }
 }

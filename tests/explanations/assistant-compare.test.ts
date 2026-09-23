@@ -122,12 +122,12 @@ test('unknown, duplicate and malformed preference evidence is rejected', async (
   }
 });
 
-test('exact continuous excerpts are accepted and preference order is owned by the server', async () => {
+test('permitted complete sentences retain preference order owned by the server', async () => {
   const orderedPreferences = ['Командные игры', 'Интерактивная программа'];
   const raw = emptyRows();
   raw.items[0].evidence = [
-    { preference: orderedPreferences[1], quote: 'командные игры' },
-    { preference: orderedPreferences[0], quote: 'интерактивные командные игры' },
+    { preference: orderedPreferences[1], quote: a.description },
+    { preference: orderedPreferences[0], quote: a.description },
   ];
   const result = await createComparisonAssistant({ config, provider: async () => raw })(catalog, { query, preferences: orderedPreferences });
   assert.deepEqual(result.items[0].evidence.map(item => item.preference), orderedPreferences);
@@ -135,6 +135,53 @@ test('exact continuous excerpts are accepted and preference order is owned by th
   // The model's semantic interpretation is exposed as evidence, never as a
   // server-certified satisfied flag or a revised ranking.
   assert.equal('satisfied' in result.items[0], false);
+});
+
+test('runtime rejects excerpts that discard a negation or qualification', async () => {
+  for (const [description, quote] of [
+    ['Не проводит командные игры.', 'командные игры'],
+    ['Проводит командные игры, но только по отдельному запросу.', 'Проводит командные игры'],
+    ['Не проводит:\nкомандные игры и караоке.', 'командные игры и караоке.'],
+    [`Не предлагает ${'дополнительные услуги, '.repeat(12)}командные игры.`, 'командные игры.'],
+  ]) {
+    const row = { ...a, description };
+    const raw = { items: [{ id: 'A', evidence: [{ preference: preferences[0], quote }] }] };
+    await assert.rejects(createComparisonAssistant({ config, provider: async () => raw })({ vendors: [row], sha256: 'context' }, input), rejects(502));
+  }
+  const row = { ...a, description: 'Проводит командные игры, но только по отдельному запросу.' };
+  const raw = { items: [{ id: 'A', evidence: [{ preference: preferences[0], quote: row.description }] }] };
+  const result = await createComparisonAssistant({ config, provider: async () => raw })({ vendors: [row], sha256: 'qualification' }, input);
+  assert.equal(result.items[0].evidence[0].quote, row.description);
+});
+
+test('pure praise cannot serve as service evidence; unsupported wishes remain to_confirm', async () => {
+  const row = { ...a, description: 'Создаёт незабываемую атмосферу и яркие эмоции.' };
+  const raw = { items: [{ id: 'A', evidence: [{ preference: 'Живая музыка', quote: row.description }] }] };
+  const customInput = { query, preferences: ['Живая музыка', 'Без пошлых конкурсов'] };
+  const customCatalog = { vendors: [row], sha256: 'praise' };
+  await assert.rejects(createComparisonAssistant({ config, provider: async () => raw })(customCatalog, customInput), rejects(502));
+  const result = await createComparisonAssistant({ config, provider: async () => ({ items: [{ id: 'A', evidence: [] }] }) })(customCatalog, customInput);
+  assert.deepEqual(result.items[0].evidence, []);
+  assert.deepEqual(result.items[0].to_confirm, customInput.preferences);
+});
+
+test('concrete facts from gifts, ensembles, ceremonies and video survive unfamiliar vocabulary', async () => {
+  for (const [preference, description] of [
+    ['Персональные подарки', 'Создаёт яркие именные открытки, карточки рассадки и welcome-боксы.'],
+    ['Струнный квартет', 'В составе струнный квартет и четыре вокалиста.'],
+    ['Выездная церемония', 'Проводит выездную регистрацию брака с индивидуальным сценарием.'],
+    ['Аэросъёмка', 'Снимает репортаж и короткие фильмы с аэросъёмкой.'],
+    ['Цианотипии', 'Изготавливает цианотипии на хлопковой бумаге.'],
+  ]) {
+    const row = { ...a, description };
+    const raw = { items: [{ id: 'A', evidence: [{ preference, quote: description }] }] };
+    const result = await createComparisonAssistant({ config, provider: async () => raw })({ vendors: [row], sha256: 'facts' }, { query, preferences: [preference] });
+    assert.equal(result.items[0].evidence[0].quote, description);
+  }
+});
+
+test('configuration failure returns a sanitized availability error', async () => {
+  await assert.rejects(createComparisonAssistant({ config: () => { throw new Error('secret-provider-diagnostics'); } })(catalog, input), rejects(503, 'AI_UNAVAILABLE'));
 });
 
 test('operational claims and language claims contradicted by structured fields are excluded', async () => {

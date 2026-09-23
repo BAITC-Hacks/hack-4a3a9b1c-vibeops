@@ -2,6 +2,7 @@ import type { Catalog } from './catalog.js';
 import type { RecommendResponse, Reason } from '../shared/contracts.js';
 import { selectVendors, REASON_LABELS } from './matching.js';
 import { validateQuery } from './validation.js';
+import { buildDecisionSupport } from './alternatives.js';
 import {
   explainSelection,
   fallbackExplanation,
@@ -99,6 +100,8 @@ export async function recommend(
     query,
 
     cards,
+
+    decision_support: buildDecisionSupport(catalog, selection, cards),
 
     summary: {
       base_count: selection.base_count,
