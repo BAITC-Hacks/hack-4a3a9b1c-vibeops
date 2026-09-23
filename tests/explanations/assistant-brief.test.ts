@@ -390,3 +390,32 @@ test('a short model quote retains next-week and day-after-tomorrow qualifiers fr
   const relative = await runGrounded(quoteBrief('завтра', '400 тысяч тенге', { date: null }), ['Свадьба послезавтра, бюджет 400 тысяч тенге.']);
   assert.equal(relative.query?.date, '2026-09-25');
 });
+
+test('SDK quote schema permits only exact bounded source fragments, retaining long messages and corrections', async t => {
+  const first = `Подробности: ${'а'.repeat(280)} свадьба послезавтра в Алматы, бюджет 500 долларов. ${'б'.repeat(340)} Категория ведущий.`;
+  const correction = 'Теперь бюджет 300 тысяч тенге, остальные условия без изменений.';
+  const messages = [first, correction];
+  let requests = 0;
+  t.mock.method(globalThis, 'fetch', async (_request: RequestInfo | URL, init?: RequestInit) => {
+    requests++;
+    const body = JSON.parse(String(init?.body));
+    const properties = body.text.format.schema.properties;
+    for (const field of ['date_source', 'budget_source']) {
+      const choices = properties[field].enum as (string | null)[];
+      assert.ok(choices.includes(null));
+      assert.ok(choices.length <= 129);
+      assert.ok(choices.includes(correction));
+      assert.ok(choices.some(value => value?.includes('свадьба послезавтра')));
+      assert.ok(choices.some(value => value?.includes('500 долларов')));
+      assert.ok(choices.includes('300 тысяч тенге'));
+      assert.ok(!choices.includes('300000 тенге'));
+      assert.ok(choices.every(value => value === null || (value.length <= 300 && messages.some(message => message.includes(value)))));
+    }
+    assert.deepEqual(JSON.parse(body.input).messages, messages);
+    return new Response(JSON.stringify({ id: 'stub', object: 'response', status: 'completed', output: [
+      { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: JSON.stringify(extraction()), annotations: [] }] },
+    ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+  await requestBrief({ messages, options: { cities: ['Алматы'], categories: ['Ведущий'], event_formats: ['свадьба'], languages: ['русский'], date_min: '2026-09-23', date_max: '2026-12-31', currency: 'KZT' }, ...config(), signal: new AbortController().signal });
+  assert.equal(requests, 1);
+});
