@@ -81,6 +81,14 @@ try {
   assert.equal(correction.query?.budget_kzt, 700000);
   assert.equal(correction.query?.city, 'Алматы');
   console.log(JSON.stringify({ case: 'correction', query: correction.query }));
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const screenshot = await post<AssistantBrief>('/api/assistant/brief', { messages: [
+      'Нужен ведущий на корпоратив в Алматы 10 октября 2026 года, бюджет до 1 миллиона тенге.',
+      'Нет, поменяй на 11 октября 2026, бюджет 700 тысяч. Остальное оставь',
+    ] });
+    assert.deepEqual(screenshot.query, { city: 'Алматы', category: 'Ведущий', event_format: 'корпоратив', date: '2026-10-11', budget_kzt: 700000, language: null, hours: null });
+    console.log(JSON.stringify({ case: 'screenshot_correction', attempt, query: screenshot.query }));
+  }
   console.log('AI_ASSISTANT_LIVE_PASS');
 } catch (error) {
   console.error(error instanceof assert.AssertionError ? `CHECK_FAILED: ${error.message}` : error instanceof Error && error.message.startsWith('HTTP ') ? error.message : 'LIVE_CHECK_FAILED');
