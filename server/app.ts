@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { catalogOptions, type Catalog } from './catalog.js';
 import type { ApiError } from '../shared/contracts.js';
+import { recommend } from './recommend.js';
 
 export function createApp(catalog: Catalog | null) {
   const app = express();
