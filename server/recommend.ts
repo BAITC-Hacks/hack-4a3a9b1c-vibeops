@@ -11,13 +11,42 @@ export type RecommendRequest = {
   language?: string;
 };
 
-export function recommend(catalog: Catalog, input: RecommendRequest) {
-  const candidates = catalog.vendors.filter(v =>
-    v.city === input.city &&
-    v.categories.includes(input.category)
-  );
+export function recommend(
+  catalog: Catalog,
+  input: RecommendRequest
+): Vendor[] {
+  return catalog.vendors
+    .filter(v => v.city === input.city)
 
-  console.log('Candidates:', candidates.length);
+    .filter(v =>
+      v.categories.includes(input.category)
+    )
 
-  return candidates;
+    // занят на эту дату
+    .filter(v =>
+      !v.busy_dates.includes(input.date)
+    )
+
+    // работает с таким типом мероприятия
+    .filter(v =>
+      v.event_formats.includes(input.event_format)
+    )
+
+    // вписывается в бюджет
+    .filter(v =>
+      v.price_from_kzt <= input.budget_kzt
+    )
+
+    // если указана длительность
+    .filter(v =>
+      input.duration_hours === undefined ||
+      v.max_hours === null ||
+      v.max_hours >= input.duration_hours
+    )
+
+    // если указан язык
+    .filter(v =>
+      input.language === undefined ||
+      v.languages.includes(input.language)
+    );
 }

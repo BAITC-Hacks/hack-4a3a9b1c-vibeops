@@ -19,10 +19,19 @@ export function createApp(catalog: Catalog | null) {
     res.json(catalogOptions(catalog));
   });
   // Nikita replaces this explicit scaffold state with validation -> matching -> explanations.
-  app.post('/api/recommend', (_req, res) => {
-    if (!catalog) { res.status(503).json(error('DATASET_UNAVAILABLE', 'Каталог недоступен.')); return; }
-    res.status(501).json(error('NOT_IMPLEMENTED', 'Подбор подрядчиков ещё не подключён: это стартовый каркас.'));
+  app.post('/api/recommend', (req, res) => {
+    if (!catalog) {
+      res.status(503).json(
+        error('DATASET_UNAVAILABLE', 'Каталог недоступен.')
+      );
+      return;
+    }
+
+    const result = recommend(catalog, req.body);
+
+    res.json(result);
   });
+
   app.use('/api', (_req, res) => { res.status(404).json(error('NOT_FOUND', 'API-маршрут не найден.')); });
   const clientRoot = resolve('dist/client');
   if (existsSync(resolve(clientRoot, 'index.html'))) {
