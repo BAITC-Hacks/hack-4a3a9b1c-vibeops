@@ -5,7 +5,7 @@
 ## Подключение к каркасу Никиты
 
 - `client/index.html` — вход Vite; `client/src/main.tsx` — React entry.
-- Frontend импортирует типы `Query`, `Card`, `Reason`, `RecommendResponse`, `ApiError` из `shared/contracts.ts` в корне. Эти типы должен экспортировать общий контракт Никиты.
+- Frontend импортирует типы `Query`, `Card`, `Reason`, `RecommendResponse`, `ApiError` из `shared/contracts.ts` в корне. Экспорты сверены с опубликованным каркасом Арлана.
 - Runtime-зависимости: `react`, `react-dom`. Build-зависимости: `vite`, `typescript`, типы React/React DOM. Дополнительных UI-библиотек нет. Общими package.json, lockfile и конфигурацией владеет Никита.
 - Рекомендуемая настройка Vite: `root: 'client'`, dev proxy `/api` на backend, `build.outDir: '../dist/client'`. Express раздаёт этот каталог и index.html в production. Это требование интеграции, не утверждение о готовом общем запуске.
 - TypeScript: DOM libs, `jsx: react-jsx`. Единственный импорт внешних типов — общий контракт.
@@ -49,3 +49,11 @@ npx vitest run --config tests/ui/vitest.config.mts
 Конфигурация тестов изолирована от общего Vite config. Tests импортируют реальный client/src/App.tsx. Fixtures в tests/ui используются только тестами и не включаются в клиентскую сборку.
 
 Возможность live AI, реальный ranking и правильность причин исключения проверяются совместно с backend после первой интеграции. Фронтенд не исправляет и не пересортировывает выдачу сервера.
+
+## Интеграция с опубликованным каркасом
+
+В feat/ui объединён origin/main `66970d8` (каркас Арлана, PR #2). Конфликты касались только стартовых UI-заглушек: сохранены полноценный App, его entry и HTML. Общие package/lock/config, backend, каталог и AI-модуль не изменены относительно main.
+
+После `npm ci` из общего lockfile успешно выполнены `npm run build` (включая оба TypeScript-проекта) и `npm test` — 17 штатных тестов. UI-тесты проверяются отдельно: общий npm test пока запускает только *.test.ts, не UI *.test.tsx. Владелец package.json должен добавить UI devDependencies и команду из раздела выше; по одному npm test нельзя утверждать, что UI-тесты запускались.
+
+Проверен production UI в Edge с настоящим Express и исходным CSV, без подмен API: health сообщает 66 профилей, форма загружает 17 глобальных категорий; текущий POST /api/recommend возвращает 501 NOT_IMPLEMENTED и отображается явной ошибкой. Это подтверждает подключение UI к каркасу, но не работу ещё отсутствующего matching. После реализации Никитой нужно повторить D1–D6 и live AI сквозным сценарием.

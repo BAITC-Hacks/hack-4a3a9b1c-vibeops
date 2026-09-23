@@ -1,0 +1,2 @@
+# Preserve organizer CSV byte-for-byte across platforms (including CRLF).
+data/vendors.csv -text whitespace=cr-at-eol
