@@ -83,6 +83,7 @@ export function createApp(catalog: Catalog | null) {
   }
 
   const handleError: ErrorRequestHandler = (err, _req, res, _next) => {
+console.error(err);
     if (err instanceof QueryValidationError) {
       res.status(422).json({ error: { code: err.code, message: err.message, fields: err.fields } });
       return;
