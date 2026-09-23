@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ExplainResult, Query, RankedVendor } from '../../shared/contracts.js';
-import { buildExplanation, fallbackExplanation, verifiedQuote, usefulEvidenceOptions } from './evidence.js';
+import { buildExplanationSet, verifiedQuote, usefulEvidenceOptions } from './evidence.js';
 import { PROMPT_VERSION, requestEvidence, type EvidenceProvider } from './provider.js';
 export { fallbackExplanation } from './evidence.js';
 
@@ -27,7 +27,7 @@ export function createExplainer(deps: Dependencies = {}): (input: ExplainInput) 
     if (!candidates.length) return { items: [], mode: 'not_needed', warning: null, model: null, cached: false };
     const { apiKey, model } = config();
     const fallback = (warning: string): ExplainResult => ({
-      items: candidates.map(c => fallbackExplanation(query, c)), mode: 'fallback', warning, model: null, cached: false,
+      items: buildExplanationSet(query, candidates).items, mode: 'fallback', warning, model: null, cached: false,
     });
     if (!apiKey?.trim() || !model?.trim()) return fallback('AI не настроен: объяснения собраны из полей и описаний каталога без LLM.');
     const canonicalQuery = [query.city, query.date, query.event_format, query.category, query.budget_kzt, query.hours ?? null, query.language ?? null];
@@ -65,15 +65,17 @@ export function createExplainer(deps: Dependencies = {}): (input: ExplainInput) 
         }
         quotes.set(row.id, row.quote);
       }
-      const items = candidates.map(c => {
-        const quote = duplicates.has(c.vendor.id) ? null : verifiedQuote(c.vendor.description, quotes.get(c.vendor.id));
-        const useful = quote && usefulEvidenceOptions(query, c.vendor.description).includes(quote);
-        return useful ? buildExplanation(query, c, quote, 'llm') : fallbackExplanation(query, c);
-      });
+      const preferred = new Map<string, string>();
+      for (const candidate of candidates) {
+        const quote = duplicates.has(candidate.vendor.id) ? null : verifiedQuote(candidate.vendor.description, quotes.get(candidate.vendor.id));
+        if (quote && usefulEvidenceOptions(query, candidate.vendor.description).includes(quote)) preferred.set(candidate.vendor.id, quote);
+      }
+      const { items, sharedEvidence } = buildExplanationSet(query, candidates, preferred);
       const llmCount = items.filter(i => i.source === 'llm').length;
       const mode = llmCount === items.length ? 'llm' : llmCount === 0 ? 'fallback' : 'mixed';
-      const warning = mode !== 'llm' ? 'Для части или всех карточек AI не дал проверяемого конкретного основания; использовано извлечение из каталога без LLM.'
+      const sourceWarning = mode !== 'llm' ? 'Для части или всех карточек AI не дал проверяемого конкретного основания; использовано извлечение из каталога без LLM.'
         : extraInvalid ? 'Некорректные дополнительные элементы ответа AI отброшены.' : null;
+      const warning = [sourceWarning, sharedEvidence ? 'Для части карточек в описаниях не найдено отдельных отличительных сведений; различия не выдумываются.' : null].filter(Boolean).join(' ') || null;
       const result: ExplainResult = { items, mode, warning, model: llmCount ? model : null, cached: false };
       // Transient failures/mixed results never persist in cache.
       if (mode === 'llm' && !extraInvalid) {

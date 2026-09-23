@@ -1,12 +1,13 @@
 import OpenAI from 'openai';
 import type { Query, RankedVendor } from '../../shared/contracts.js';
-import { usefulEvidenceOptions } from './evidence.js';
+import { contextualEvidenceOptions } from './evidence.js';
 
-export const PROMPT_VERSION = 'firebird-evidence-v4';
+export const PROMPT_VERSION = 'firebird-evidence-v5';
 export type ProviderInput = { query: Query; candidates: RankedVendor[]; apiKey: string; model: string; signal: AbortSignal };
 export type EvidenceProvider = (input: ProviderInput) => Promise<unknown>;
 
 export const requestEvidence: EvidenceProvider = async ({ query, candidates, apiKey, model, signal }) => {
+  const choices = contextualEvidenceOptions(query, candidates);
   const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 6_000 });
   const result = await client.responses.create({
     model,
@@ -23,7 +24,7 @@ export const requestEvidence: EvidenceProvider = async ({ query, candidates, api
         type: 'object', properties: { items: { type: 'array', items: { anyOf: candidates.map(({ vendor }) => ({
           type: 'object', properties: {
             id: { type: 'string', enum: [vendor.id] },
-            quote: { type: 'string', enum: ['', ...usefulEvidenceOptions(query, vendor.description)] },
+            quote: { type: 'string', enum: ['', ...choices.get(vendor.id)!.options] },
           }, required: ['id', 'quote'], additionalProperties: false,
         })) } } }, required: ['items'], additionalProperties: false,
       },
