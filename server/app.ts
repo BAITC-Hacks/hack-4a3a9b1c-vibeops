@@ -49,17 +49,19 @@ export function createApp(catalog: Catalog | null) {
     res.json(catalogOptions(catalog));
   });
 
-  app.post('/api/recommend', async (req, res) => {
+  app.post('/api/recommend', async (req, res, next) => {
     if (!catalog) {
       res.status(503).json(
         error('DATASET_UNAVAILABLE', 'Каталог недоступен.')
       );
       return;
     }
-
+  try {
     const result = await recommend(catalog, req.body);
-
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
   });
 
   app.use('/api', (_req, res) => {
