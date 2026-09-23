@@ -21,9 +21,10 @@ const display = (key: keyof AssistantDraft, value: AssistantDraft[keyof Assistan
   return String(value);
 };
 
-export default function Assistant({ onActivity, onConfirm, canSearch, externalRevision }: {
+export default function Assistant({ onActivity, onConfirm, onManualSearch, canSearch, externalRevision }: {
   onActivity: (reason: 'edit' | 'reset') => void;
   onConfirm: (query: Query, preferences: string[]) => void;
+  onManualSearch: () => void;
   canSearch: boolean;
   externalRevision: number;
 }) {
@@ -82,7 +83,7 @@ export default function Assistant({ onActivity, onConfirm, canSearch, externalRe
   return <section className="assistant" aria-labelledby="assistant-title">
     <div className="assistant-conversation">
       <div className="assistant-heading"><span className="assistant-mark" aria-hidden="true">✳</span><div><p className="eyebrow">Начните с вашей идеи</p><h2 id="assistant-title">Расскажите AI о событии</h2></div><span className="assistant-badge">AI-помощник</span></div>
-      <p className="assistant-description">Опишите, кого ищете и что для вас важно. Помощник соберёт условия, задаст вопросы и сопоставит пожелания с описаниями подрядчиков.</p>
+      <p className="assistant-description">Опишите, что нужно для события и что для вас важно. Помощник соберёт условия и задаст вопросы. После подбора AI сравнит пожелания с описаниями выбранных кандидатов; пожелания не меняют их состав и порядок.</p>
       {manuallyChanged && <p className="assistant-context-note" role="status">Условия изменены в форме ниже. Предыдущий диалог сброшен, чтобы не вернуть старые параметры. Подбор можно продолжить через форму или описать новое событие здесь.</p>}
       {messages.length > 0 && <div className="assistant-history" aria-label="Ваши сообщения">{messages.map((message, index) => <div className="assistant-message" key={index}><span>{index === 0 ? 'Ваш запрос' : `Уточнение ${index}`}</span><p>{message}</p></div>)}</div>}
       <form onSubmit={event => void submit(event)} className="assistant-form">
@@ -94,7 +95,7 @@ export default function Assistant({ onActivity, onConfirm, canSearch, externalRe
           {pending ? <button type="button" className="assistant-reset" onClick={cancel}>Отменить</button> : (messages.length > 0 || error) && <button type="button" className="assistant-reset" onClick={reset}>Новый запрос</button>}
         </div>
       </form>
-      {error && <div className="error-box" role="alert"><strong>AI не подготовил условия</strong><p>{error}</p><p>Можно повторить запрос или воспользоваться формой ниже.</p></div>}
+      {error && <div className="error-box" role="alert"><strong>AI не подготовил условия</strong><p>{error}</p><p>Можно повторить запрос или воспользоваться формой ниже.</p><button type="button" className="secondary" onClick={onManualSearch}>Перейти к ручному подбору</button></div>}
     </div>
     <div className="assistant-review" aria-live="polite" aria-busy={!!pending}>
       {pending ? <div className="assistant-thinking" role="status"><span className="spinner" aria-hidden="true" /><h3>Разбираем вашу идею</h3><p>Выделяем условия и пожелания, проверяем, что нужно уточнить.</p></div> : brief ? <>
@@ -102,7 +103,7 @@ export default function Assistant({ onActivity, onConfirm, canSearch, externalRe
         <h3 className="brief-summary">{brief.summary}</h3>
         <dl className="brief-fields">{LABELS.map(([key, label]) => <div key={key} className={brief.draft[key] === null && key !== 'hours' && key !== 'language' ? 'missing' : ''}><dt>{label}</dt><dd>{display(key, brief.draft[key])}</dd></div>)}</dl>
         {brief.preferences.length > 0 && <div className="brief-preferences"><h4>Что ещё важно для вас</h4><div>{brief.preferences.map((preference, index) => <span key={index}>{preference}</span>)}</div><p>После подбора AI найдёт основания в описаниях и выделит то, что нужно уточнить.</p></div>}
-        {brief.questions.length > 0 && <div className="brief-questions"><h4>Уточним перед подбором</h4><ul>{brief.questions.map((question, index) => <li key={index}>{question}</li>)}</ul><p>Ответьте в сообщении слева — помощник дополнит условия.</p></div>}
+        {brief.questions.length > 0 && <div className="brief-questions"><h4>Уточним перед подбором</h4><ul>{brief.questions.map((question, index) => <li key={index}>{question}</li>)}</ul><p>Ответьте в поле сообщения — помощник дополнит условия.</p></div>}
         {brief.warnings.length > 0 && <div className="brief-warnings" role="note" aria-label="Что проверить перед подбором"><strong>Проверьте перед подбором</strong>{brief.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}
         <button type="button" className="primary brief-confirm" disabled={!brief.query || !canSearch || !!prompt.trim()} onClick={() => { if (brief.query) { setConfirmed(true); onConfirm(brief.query, brief.preferences); } }}>Подобрать по этим условиям<span aria-hidden="true">↓</span></button>
         <p className="brief-footnote">{confirmed ? 'Условия перенесены в форму. Результат подбора — ниже.' : prompt.trim() ? 'Сначала отправьте уточнение, чтобы обновить условия.' : !brief.query ? 'Заполните недостающие условия в следующем сообщении.' : !canSearch ? 'Дождитесь загрузки каталога или завершения текущего подбора.' : 'Проверьте условия перед подбором. Их также можно изменить в форме ниже.'}</p>
