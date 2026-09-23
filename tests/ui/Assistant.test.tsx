@@ -255,4 +255,82 @@ describe('AI assistant: user-reviewed brief and preference comparison', () => {
     api.mockResolvedValueOnce(await json(duplicated));
     await expect(comparePreferences(query, preferences, new AbortController().signal)).rejects.toThrow('Не удалось прочитать AI-сравнение');
   });
+
+  it.each(['manual-edit', 'manual-search', 'demo'])('cancels a pending brief after %s so a late response cannot restore old conditions', async action => {
+    await ready();
+    let resolveOld!: (value: Response) => void;
+    api.mockImplementationOnce(() => new Promise<Response>(resolve => { resolveOld = resolve; }));
+    send('Ведущий в Алматы.');
+    const signal = calls('/api/assistant/brief')[0][1].signal as AbortSignal;
+    if (action === 'manual-edit') fireEvent.change(screen.getByLabelText('Бюджет, ₸'), { target: { value: '800000' } });
+    else fireEvent.click(screen.getByRole('button', { name: action === 'demo' ? /^D2 / : /Подобрать подрядчиков/ }));
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolveOld(await json(complete())));
+    expect(screen.queryByText('Можно подбирать')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Подобрать по этим условиям/ })).toBeNull();
+    expect(screen.getByText(/Предыдущий диалог сброшен/)).toBeTruthy();
+  });
+
+  it('does not lose confirmed wishes when an unsent follow-up is typed then erased', async () => {
+    await prepared(); confirm(); await screen.findByRole('heading', { name: 'Под ваши пожелания' });
+    fireEvent.change(input(), { target: { value: 'Может быть' } });
+    fireEvent.change(input(), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Подобрать подрядчиков/ }));
+    await screen.findByRole('heading', { name: 'Под ваши пожелания' });
+    expect(JSON.parse(calls('/api/assistant/compare')[1][1].body)).toEqual({ query, preferences });
+  });
+
+  it('shows the converted budget and resolved relative date warnings before explicit confirmation', async () => {
+    await ready();
+    const converted = { ...query, date: '2026-09-25', budget_kzt: 250000 };
+    const warnings = ['500 USD ≈ 250 000 ₸ по ориентировочному курсу. Подтвердите бюджет.', 'Послезавтра — 25 сентября 2026, часовой пояс Asia/Almaty.'];
+    api.mockResolvedValueOnce(await json(complete({ draft: converted, query: converted, warnings })));
+    send('Ведущий послезавтра за 500 долларов.');
+    const note = await screen.findByRole('note', { name: 'Что проверить перед подбором' });
+    for (const warning of warnings) expect(within(note).getByText(warning)).toBeTruthy();
+    expect(calls('/api/recommend')).toHaveLength(0);
+    confirm(); await screen.findByRole('heading', { name: 'Ваша подборка' });
+    expect(JSON.parse(calls('/api/recommend')[0][1].body)).toEqual(converted);
+  });
+
+  it('applies an alternative while an AI draft is pending, retains confirmed wishes, and ignores both old responses', async () => {
+    await prepared();
+    const alternativeQuery = { ...query, date: '2026-10-11' };
+    const original = api.getMockImplementation()!;
+    let compareCalls = 0;
+    let resolveOld!: (value: Response) => void;
+    let resolveDraft!: (value: Response) => void;
+    api.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/api/assistant/brief') return new Promise<Response>(resolve => { resolveDraft = resolve; });
+      if (url === '/api/assistant/compare' && ++compareCalls === 1) return new Promise<Response>(resolve => { resolveOld = resolve; });
+      if (url === '/api/recommend') {
+        const received = JSON.parse(String(init?.body));
+        return json(response({ query: received, decision_support: received.date === query.date ? {
+          version: 'v1', status: 'available', message: null, comparison: [], alternatives: [{ kind: 'date', query: alternativeQuery,
+            eligible_count: 2, new_vendor_ids: ['fixture-new'], title: 'Дата 11.10.2026', explanation: 'Дата меняется, остальные условия сохранены.', source: 'catalog' }],
+        } : undefined }));
+      }
+      return original(url, init);
+    });
+    confirm(); await screen.findByRole('button', { name: 'Применить дату' });
+    await waitFor(() => expect(calls('/api/assistant/compare')).toHaveLength(1));
+    const oldSignal = calls('/api/assistant/compare')[0][1].signal as AbortSignal;
+    send('Пока уточняю бюджет, хочу ещё и танцы.');
+    const draftSignal = calls('/api/assistant/brief')[1][1].signal as AbortSignal;
+    expect(screen.getByRole('button', { name: 'Применить дату' })).toBeTruthy();
+    expect(screen.getByText(/Показан результат последнего подтверждённого поиска/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Применить дату' }));
+    await screen.findByRole('heading', { name: 'Под ваши пожелания' });
+    expect(oldSignal.aborted).toBe(true);
+    expect(draftSignal.aborted).toBe(true);
+    expect(JSON.parse(calls('/api/recommend')[1][1].body)).toEqual(alternativeQuery);
+    expect(JSON.parse(calls('/api/assistant/compare')[1][1].body)).toEqual({ query: alternativeQuery, preferences });
+    const stale = comparison(); stale.items[0].evidence[0].quote = 'СТАРАЯ ЦИТАТА';
+    await act(async () => resolveOld(await json(stale)));
+    await act(async () => resolveDraft(await json(complete({ summary: 'НЕПРИМЕНЁННЫЙ ЧЕРНОВИК', preferences: ['танцы'] }))));
+    expect(screen.queryByText('«СТАРАЯ ЦИТАТА»')).toBeNull();
+    expect(screen.queryByText('НЕПРИМЕНЁННЫЙ ЧЕРНОВИК')).toBeNull();
+    expect(screen.queryByText(/Показан результат последнего подтверждённого поиска/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Подобрать по этим условиям/ })).toBeNull();
+  });
 });

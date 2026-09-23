@@ -1,0 +1,195 @@
+{
+  "checked_at": "2026-09-23",
+  "timezone": "Asia/Almaty",
+  "production_code_commit": "a84cc6b7d9297e0aea1ec728f24dd52ee654887c",
+  "dataset_sha256": "6a724b6b7dfb5973343e68ba18dadb60fc807d87e3d78f03ee86fb26cb089f7d",
+  "backend_tests": {
+    "pass": 130,
+    "fail": 0
+  },
+  "ui_tests": {
+    "pass": 61,
+    "fail": 0
+  },
+  "npm_audit_known_vulnerabilities": 0,
+  "natural_language_live": {
+    "model": "gpt-6-sol",
+    "results": [
+      {
+        "name": "relative USD",
+        "pass": true,
+        "ms": 4487
+      },
+      {
+        "name": "guest count is not money",
+        "pass": true,
+        "ms": 6655
+      },
+      {
+        "name": "guest count with valid budget",
+        "pass": true,
+        "ms": 3613
+      },
+      {
+        "name": "relative three days",
+        "pass": true,
+        "ms": 3955
+      },
+      {
+        "name": "USD then KZT correction",
+        "pass": true,
+        "ms": 3756
+      },
+      {
+        "name": "unsupported currency",
+        "pass": true,
+        "ms": 3155
+      },
+      {
+        "name": "multiple mandatory languages",
+        "pass": true,
+        "ms": 3380
+      },
+      {
+        "name": "missing category",
+        "pass": true,
+        "ms": 3225
+      },
+      {
+        "name": "weekday this Friday",
+        "pass": true,
+        "ms": 3687
+      },
+      {
+        "name": "weekday next Friday",
+        "pass": true,
+        "ms": 3247
+      },
+      {
+        "name": "day and month without year",
+        "pass": true,
+        "ms": 3372
+      },
+      {
+        "name": "negative date correction",
+        "pass": true,
+        "ms": 3484
+      },
+      {
+        "name": "two weeks",
+        "pass": true,
+        "ms": 3654
+      },
+      {
+        "name": "alternative dates need clarification",
+        "pass": true,
+        "ms": 3182
+      },
+      {
+        "name": "explicit screenshot correction",
+        "pass": true,
+        "ms": 3618
+      },
+      {
+        "name": "explicit year outside catalog",
+        "pass": true,
+        "ms": 2664
+      }
+    ],
+    "summary": {
+      "total": 16,
+      "failed": 0
+    }
+  },
+  "compare_live": [
+    {
+      "name": "gifts",
+      "source": "llm",
+      "model": "gpt-6-sol",
+      "ids": [
+        "HK-60927",
+        "HK-90005"
+      ],
+      "ms": 3032
+    },
+    {
+      "name": "bands",
+      "source": "llm",
+      "model": "gpt-6-sol",
+      "ids": [
+        "HK-23752",
+        "HK-83709",
+        "HK-57480"
+      ],
+      "ms": 4259
+    },
+    {
+      "name": "video",
+      "source": "llm",
+      "model": "gpt-6-sol",
+      "ids": [
+        "HK-62242"
+      ],
+      "ms": 2150
+    },
+    {
+      "name": "unsupported wish",
+      "source": "llm",
+      "model": "gpt-6-sol",
+      "ids": [
+        "HK-42352",
+        "HK-44923",
+        "HK-27222"
+      ],
+      "ms": 1858
+    },
+    {
+      "name": "ceremony corrected category and date",
+      "source": "llm",
+      "model": "gpt-6-sol",
+      "ids": [
+        "HK-90007",
+        "HK-77793"
+      ]
+    }
+  ],
+  "fallback_grid": {
+    "scope": "fallback only; all catalog cities/categories/formats, 100 dates; budget 6000000, no language/hours filters; not a semantic quality guarantee",
+    "dataset_sha256": "6a724b6b7dfb5973343e68ba18dadb60fc807d87e3d78f03ee86fb26cb089f7d",
+    "nonempty": 7624,
+    "duplicateTexts": 0,
+    "duplicateQuotes": 0,
+    "invalidQuotes": 0,
+    "sharedDisclosures": 451,
+    "missingProfiles": [
+      "HK-25279",
+      "HK-92824"
+    ]
+  },
+  "cold_restart": {
+    "pass": true,
+    "runs": 2,
+    "mode": "fallback"
+  },
+  "simulated_api_failure": {
+    "http_statuses": {
+      "brief": 503,
+      "compare": 503,
+      "recommend": 200
+    },
+    "recommend_fallback": true,
+    "provider_calls": 3,
+    "real_external_calls": 0
+  },
+  "limitations": [
+    "Two intermediate AI_INVALID_RESPONSE failures were not reproduced; original raw failure causes unknown.",
+    "Second physical computer, jury AI access and platform submission are not confirmed."
+  ],
+  "browser_live": {
+    "status": "PASS",
+    "report": "release-browser/report.json",
+    "real_api": true,
+    "cases": 4,
+    "javascript_errors": 0
+  }
+}

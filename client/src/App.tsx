@@ -6,6 +6,7 @@ import { comparePreferences, getOptions, recommend, RequestError } from './api';
 import type { CatalogOptions } from './api';
 import { DEMOS } from './demo';
 import Assistant from './Assistant';
+import DecisionSupport from './DecisionSupport';
 
 type FormValues = { city: string; date: string; event_format: string; category: string; budget_kzt: string; hours: string; language: string };
 const INITIAL: FormValues = { city: '', date: '2026-10-10', event_format: '', category: '', budget_kzt: '1000000', hours: '', language: '' };
@@ -73,8 +74,9 @@ function VendorCard({ card, index, comparison }: { card: Card; index: number; co
   </article>;
 }
 
-function Results({ result, comparison, comparisonLoading, comparisonError, retryComparison }: {
+function Results({ result, comparison, comparisonLoading, comparisonError, retryComparison, applyAlternative }: {
   result: RecommendResponse; comparison: AssistantComparison | null; comparisonLoading: boolean; comparisonError: string; retryComparison: () => void;
+  applyAlternative: (query: Query) => void;
 }) {
   const { outcome, summary, query, explanation } = result;
   const title = outcome === 'matched' ? 'Ваша подборка' : outcome === 'no_category_in_city' ? 'В этом городе такой категории нет' : 'Никто не проходит по условиям';
@@ -98,6 +100,7 @@ function Results({ result, comparison, comparisonLoading, comparisonError, retry
       <div><h3>{outcome === 'no_category_in_city' ? 'Каталог пока не покрывает этот выбор' : 'Можно изменить параметры поиска'}</h3>
         <p>{outcome === 'no_category_in_city' ? 'Попробуйте другую категорию или город. Мы не подставляем подрядчиков из другого города автоматически.' : 'Посмотрите причины ниже и измените дату, бюджет или другие условия в форме.'}</p></div>
     </div>}
+    <DecisionSupport support={result.decision_support} cards={result.cards} onApply={applyAlternative} />
     {summary.base_count > 0 && <section className="diagnostics" aria-labelledby="diagnostics-title">
       <div className="diagnostics-heading"><h3 id="diagnostics-title">Что повлияло на подбор</h3><span>{summary.base_count} в каталоге · {summary.eligible_count} подходят · {summary.rejected_count} исключены</span></div>
       {summary.rejected_count > 0 ? <>
@@ -134,6 +137,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
   const [activePreferences, setActivePreferences] = useState<string[]>([]);
+  const [assistantRevision, setAssistantRevision] = useState(0);
   const [comparison, setComparison] = useState<AssistantComparison | null>(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [comparisonError, setComparisonError] = useState('');
@@ -173,7 +177,7 @@ export default function App() {
     setLoading(false); setResult(null); setError(''); setFields({});
   };
   const change = (key: keyof FormValues, value: string) => {
-    invalidate(); setActiveDemo(null); setValues(previous => ({ ...previous, [key]: value }));
+    invalidate(); setAssistantRevision(revision => revision + 1); setActiveDemo(null); setValues(previous => ({ ...previous, [key]: value }));
   };
   const runComparison = async (query: Query, preferences: string[], cards: Card[]) => {
     comparisonController.current?.abort();
@@ -228,7 +232,7 @@ export default function App() {
       if (sequence.current === requestId) setLoading(false);
     }
   };
-  const submit = (event: FormEvent) => { event.preventDefault(); void run(values, activePreferences); };
+  const submit = (event: FormEvent) => { event.preventDefault(); setAssistantRevision(revision => revision + 1); void run(values, activePreferences); };
   const fieldError = (key: keyof FormValues) => fields[key] ? <span className="field-error" id={`${key}-error`}>{fields[key]}</span> : null;
   const attributes = (key: keyof FormValues) => ({ id: key, name: key, 'aria-invalid': !!fields[key], 'aria-describedby': fields[key] ? `${key}-error` : undefined });
 
@@ -236,7 +240,7 @@ export default function App() {
     <header className="site-header"><div className="header-inner"><a className="brand" href="#main"><span className="brand-mark" aria-hidden="true">f.</span>firebird<span className="brand-separator">/</span><span className="brand-description">подрядчики для событий</span></a><span className="team-label">VibeOps · HackAlem AI</span></div></header>
     <main id="main">
       <section className="intro"><p className="eyebrow">Ваше событие начинается с разговора</p><h1>Есть идея события.<br /><span>Найдём, с кем её воплотить.</span></h1><p className="intro-text">AI превратит ваше описание в условия подбора и поможет сравнить до трёх подрядчиков по тому, что важно именно вам.</p></section>
-      <Assistant canSearch={!!options && !loading}
+      <Assistant externalRevision={assistantRevision} canSearch={!!options && !loading}
         onActivity={() => setAssistantDraftChanged(true)}
         onManualSearch={() => { searchTitle.current?.focus({ preventScroll: true }); workspace.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }}
         onConfirm={(query, preferences) => { const form = fromQuery(query); setValues(form); setActiveDemo(null); setActivePreferences(preferences); void run(form, preferences); workspace.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} />
@@ -260,11 +264,11 @@ export default function App() {
         </aside>
         <div className="output-panel" aria-busy={loading}>
           <section className="demo-section" aria-labelledby="demo-title"><div className="demo-heading"><h2 id="demo-title">Попробуйте на примере</h2><span>Запросы к текущему каталогу</span></div><div className="demo-grid">
-            {DEMOS.map(demo => <button key={demo.id} type="button" disabled={!options} aria-pressed={activeDemo === demo.id} className={`demo-button ${activeDemo === demo.id ? 'selected' : ''}`} onClick={() => { const form = fromQuery(demo.query); setValues(form); setActiveDemo(demo.id); setActivePreferences([]); void run(form); }}><span className="demo-id">{demo.id}</span><span><strong>{demo.label}</strong><small>{demo.description}</small></span></button>)}
+            {DEMOS.map(demo => <button key={demo.id} type="button" disabled={!options} aria-pressed={activeDemo === demo.id} className={`demo-button ${activeDemo === demo.id ? 'selected' : ''}`} onClick={() => { const form = fromQuery(demo.query); setAssistantRevision(revision => revision + 1); setValues(form); setActiveDemo(demo.id); setActivePreferences([]); void run(form); }}><span className="demo-id">{demo.id}</span><span><strong>{demo.label}</strong><small>{demo.description}</small></span></button>)}
           </div></section>
           {error && <div className="error-box" role="alert"><strong>Подбор не выполнен</strong><p>{error}</p></div>}
           {result && assistantDraftChanged && <p className="notice" role="status">Показан результат последнего подтверждённого поиска. Черновик диалога его не меняет — подтвердите новые условия, чтобы обновить подборку.</p>}
-          {loading ? <div className="loading-state" role="status"><span className="spinner" aria-hidden="true" /><h2>Проверяем условия и готовим объяснения</h2><p>Учитываем дату, бюджет и особенности мероприятия.</p></div> : result ? <Results result={result} comparison={comparison} comparisonLoading={comparisonLoading} comparisonError={comparisonError} retryComparison={() => { if (comparisonRequest) void runComparison(comparisonRequest.query, comparisonRequest.preferences, comparisonRequest.cards); }} /> : !error && <section className="welcome-state"><span className="welcome-symbol" aria-hidden="true">✳</span><h2>Здесь появится ваша подборка</h2><p>Начните с AI-помощника выше или задайте условия в форме. Покажем кандидатов, основания выбора и вопросы для обсуждения.</p><div className="welcome-points"><span>Учитываем занятость</span><span>Объясняем различия</span><span>Показываем ограничения</span></div></section>}
+          {loading ? <div className="loading-state" role="status"><span className="spinner" aria-hidden="true" /><h2>Проверяем условия и готовим объяснения</h2><p>Учитываем дату, бюджет и особенности мероприятия.</p></div> : result ? <Results result={result} comparison={comparison} comparisonLoading={comparisonLoading} comparisonError={comparisonError} retryComparison={() => { if (comparisonRequest) void runComparison(comparisonRequest.query, comparisonRequest.preferences, comparisonRequest.cards); }} applyAlternative={query => { const form = fromQuery(query); setAssistantRevision(revision => revision + 1); setValues(form); setActiveDemo(null); void run(form, activePreferences); }} /> : !error && <section className="welcome-state"><span className="welcome-symbol" aria-hidden="true">✳</span><h2>Здесь появится ваша подборка</h2><p>Начните с AI-помощника выше или задайте условия в форме. Покажем кандидатов, основания выбора и вопросы для обсуждения.</p><div className="welcome-points"><span>Учитываем занятость</span><span>Объясняем различия</span><span>Показываем ограничения</span></div></section>}
         </div>
       </div>
       <footer className="site-footer"><span>Firebird · прототип команды VibeOps</span><span>Анонимизированный каталог. Только рекомендации.</span></footer>

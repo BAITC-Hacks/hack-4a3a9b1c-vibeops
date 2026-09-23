@@ -91,6 +91,10 @@ export async function recommend(query: Query, signal: AbortSignal): Promise<Reco
         (card.evidence_quote === null || typeof card.evidence_quote === 'string') && ['llm', 'fallback'].includes(card.explanation_source as string))) {
     throw new RequestError('Не удалось прочитать результат подбора. Повторите запрос.');
   }
+  // Optional recommendations must never conceal otherwise valid search results.
+  if (result.decision_support !== undefined && !validDecisionSupport(result.decision_support, result)) {
+    delete result.decision_support;
+  }
   return result;
 }
 
@@ -102,6 +106,30 @@ const validDraft = (value: unknown): value is AssistantDraft => record(value) &&
 const validQuery = (value: unknown): value is Query => validDraft(value) &&
   ['city', 'date', 'event_format', 'category', 'budget_kzt'].every(key => value[key as keyof Query] !== null) &&
   validDate(value.date) && count(value.budget_kzt) && (value.hours === null || value.hours > 0);
+
+function validDecisionSupport(value: unknown, result: RecommendResponse): boolean {
+  if (!record(value) || value.version !== 'v1' || !['available', 'not_needed', 'no_category', 'no_single_change'].includes(String(value.status)) ||
+      !(value.message === null || typeof value.message === 'string') || !Array.isArray(value.alternatives) || value.alternatives.length > 2 ||
+      !Array.isArray(value.comparison) || (value.comparison.length !== 0 && value.comparison.length !== result.cards.length) ||
+      (value.status === 'available' ? !value.alternatives.length : value.alternatives.length !== 0)) return false;
+  const kinds = new Set<string>();
+  for (const alternative of value.alternatives) {
+    if (!record(alternative) || !['date', 'budget'].includes(String(alternative.kind)) || alternative.source !== 'catalog' ||
+        !validQuery(alternative.query) || !text(alternative.title) || !text(alternative.explanation) ||
+        !count(alternative.eligible_count) || Number(alternative.eligible_count) <= result.summary.eligible_count ||
+        !strings(alternative.new_vendor_ids) || !alternative.new_vendor_ids.length || kinds.has(String(alternative.kind))) return false;
+    kinds.add(String(alternative.kind));
+    const proposed = alternative.query;
+    const changed = draftKeys.filter(key => proposed[key] !== result.query[key]);
+    if (changed.length !== 1 || changed[0] !== (alternative.kind === 'date' ? 'date' : 'budget_kzt')) return false;
+    if (alternative.kind === 'budget' && alternative.query.budget_kzt <= result.query.budget_kzt) return false;
+    const days = Math.abs(Date.parse(alternative.query.date) - Date.parse(result.query.date)) / 86_400_000;
+    if (alternative.kind === 'date' && (days < 1 || days > 7)) return false;
+  }
+  return value.comparison.every((item, index) => record(item) && item.vendor_id === result.cards[index]?.id && text(item.feature) &&
+    (item.evidence_quote === null || (text(item.evidence_quote) && item.evidence_quote === result.cards[index]?.evidence_quote)) &&
+    ['llm', 'fallback', 'catalog'].includes(String(item.source)));
+}
 
 export async function prepareBrief(messages: string[], signal: AbortSignal): Promise<AssistantBrief> {
   const result = await request<unknown>('/api/assistant/brief', {
