@@ -139,15 +139,16 @@ const months = [
   ['июль', 'июля', 'шілде'], ['август', 'августа', 'тамыз'], ['сентябрь', 'сентября', 'қыркүйек'],
   ['октябрь', 'октября', 'қазан'], ['ноябрь', 'ноября', 'қараша'], ['декабрь', 'декабря', 'желтоқсан'],
 ];
-function explicitDates(quote: string): Set<string> {
+function explicitDates(quote: string, fragment?: string): Set<string> {
   const dates = new Set<string>();
+  const supports = (match: RegExpMatchArray) => !fragment || match[0].toLowerCase().includes(fragment.toLowerCase());
   const put = (year: string, month: string | number, day: string) => dates.add(`${year}-${String(month).padStart(2, '0')}-${day.padStart(2, '0')}`);
-  for (const match of quote.matchAll(/(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/gu)) put(match[1]!, match[2]!, match[3]!);
-  for (const match of quote.matchAll(/(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)/gu)) put(match[3]!, match[2]!, match[1]!);
+  for (const match of quote.matchAll(/(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/gu)) if (supports(match)) put(match[1]!, match[2]!, match[3]!);
+  for (const match of quote.matchAll(/(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)/gu)) if (supports(match)) put(match[3]!, match[2]!, match[1]!);
   months.forEach((names, month) => {
     const name = `(?:${names.join('|')})`;
-    for (const match of quote.toLowerCase().matchAll(new RegExp(`(?<!\\d)(\\d{1,2})\\s+${name}(?:да|де|нда|нде)?\\s+(\\d{4})(?!\\d)`, 'gu'))) put(match[2]!, month + 1, match[1]!);
-    for (const match of quote.toLowerCase().matchAll(new RegExp(`(?<!\\d)(\\d{4})\\s*(?:жылғы|жыл|ж\\.)?\\s+(\\d{1,2})\\s+${name}`, 'gu'))) put(match[1]!, month + 1, match[2]!);
+    for (const match of quote.toLowerCase().matchAll(new RegExp(`(?<!\\d)(\\d{1,2})\\s+${name}(?:да|де|нда|нде)?\\s+(\\d{4})(?!\\d)`, 'gu'))) if (supports(match)) put(match[2]!, month + 1, match[1]!);
+    for (const match of quote.toLowerCase().matchAll(new RegExp(`(?<!\\d)(\\d{4})\\s*(?:жылғы|жыл|ж\\.)?\\s+(\\d{1,2})\\s+${name}`, 'gu'))) if (supports(match)) put(match[1]!, month + 1, match[2]!);
   });
   return dates;
 }
@@ -219,8 +220,17 @@ async function finishBrief(raw: ExtractedBrief, catalog: Catalog, model: string,
     && (relativeDates(context, today).size > 0 || relativeDates(dateSource ?? '', today).size > 0)
     && explicitDates(context).size === 0;
   if (contextualDateChoice && dateSourceIndex === messages.length - 1) dateSource = context;
-  const relative = relativeDates(dateSource ?? '', today);
-  if (relative.size === 1 && explicitDates(dateSource ?? '').size === 0) {
+  const explicit = explicitDates(dateSource ?? '');
+  // Expand a truncated quote only inside a complete date in the same message.
+  // The explicitly written year takes precedence over the nearest-future-date rule.
+  const expanded = dateSource && !explicit.size ? explicitDates(context, dateSource) : new Set<string>();
+  const relative = expanded.size ? new Set<string>() : relativeDates(dateSource ?? '', today);
+  if (explicit.size > 1 || expanded.size > 1) {
+    draft.date = null;
+    warnings.push('В сообщении несколько полных дат. Укажите одну дату мероприятия.');
+  } else if (expanded.size === 1) {
+    draft.date = [...expanded][0]!;
+  } else if (relative.size === 1 && explicitDates(dateSource ?? '').size === 0) {
     draft.date = [...relative][0]!;
     warnings.push(`Дата «${dateSource}» рассчитана как ${draft.date}. Сегодня ${today}, часовой пояс ${BRIEF_TIME_ZONE}. Для дня недели или даты без года выбираем ближайшее наступление; «следующий» день недели — в следующей календарной неделе. Проверьте дату перед подтверждением условий.`);
   } else if (contextualDateChoice && !relative.size && dateSourceIndex === messages.length - 1) {

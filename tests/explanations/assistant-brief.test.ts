@@ -419,3 +419,26 @@ test('SDK quote schema permits only exact bounded source fragments, retaining lo
   await requestBrief({ messages, options: { cities: ['Алматы'], categories: ['Ведущий'], event_formats: ['свадьба'], languages: ['русский'], date_min: '2026-09-23', date_max: '2026-12-31', currency: 'KZT' }, ...config(), signal: new AbortController().signal });
   assert.equal(requests, 1);
 });
+
+test('screenshot date and budget correction keeps latest conditions with full truncated or stale sources', async () => {
+  const messages = [
+    'Нужен ведущий на корпоратив в Алматы 10 октября 2026 года, бюджет до 1 миллиона тенге.',
+    'Нет, поменяй на 11 октября 2026, бюджет 700 тысяч. Остальное оставь',
+  ];
+  for (const date_source of ['11 октября 2026', '11 октября', '10 октября 2026']) {
+    const result = await runGrounded(extraction({ date: '2026-10-11', event_format: 'корпоратив', budget_kzt: 700000 }, {
+      date_source, budget_source: '700 тысяч', preferences: [],
+    }), messages);
+    assert.deepEqual(result.query, { ...fullDraft, date: '2026-10-11', event_format: 'корпоратив', budget_kzt: 700000 });
+    assert.deepEqual(result.questions, []);
+  }
+});
+
+test('a truncated date quote cannot erase an explicit out-of-range year or alternative years', async () => {
+  const explicit = await runGrounded(extraction({ date: '2027-10-11' }, { date_source: '11 октября', budget_source: '400 тысяч тенге' }), ['Свадьба 11 октября 2027, бюджет 400 тысяч тенге.']);
+  assert.equal(explicit.query, null);
+  assert.equal(explicit.draft.date, '2027-10-11');
+  const ambiguous = await runGrounded(extraction({ date: '2026-10-11' }, { date_source: '11 октября', budget_source: '400 тысяч тенге' }), ['Свадьба 11 октября 2026 или 11 октября 2027, бюджет 400 тысяч тенге.']);
+  assert.equal(ambiguous.query, null);
+  assert.equal(ambiguous.draft.date, null);
+});
