@@ -78,6 +78,33 @@ test('Kazakh month dates and thousand units are grounded in the original message
   assert.deepEqual(result.query, fullDraft);
 });
 
+test('screenshot correction keeps the explicit date even when the model truncates its source quote', async () => {
+  const messages = [
+    'Нужен ведущий на корпоратив в Алматы 10 октября 2026 года, бюджет до 1 миллиона тенге.',
+    'Нет, поменяй на 11 октября 2026, бюджет 700 тысяч. Остальное оставь',
+  ];
+  for (const date_source of ['11 октября 2026', '11 октября']) {
+    const result = await run(extraction({ date: '2026-10-11', event_format: 'корпоратив', budget_kzt: 700000 }, {
+      date_source, budget_source: '700 тысяч', preferences: [],
+    }), messages);
+    assert.deepEqual(result.query, { ...fullDraft, date: '2026-10-11', event_format: 'корпоратив', budget_kzt: 700000 });
+    assert.deepEqual(result.questions, []);
+  }
+});
+
+test('source expansion never borrows a year or date from another phrase or message', async () => {
+  for (const messages of [
+    [fullMessage, 'Нет, поменяй на 11 октября, бюджет до 400 тысяч тенге.'],
+    ['11 октября, бюджет до 400 тысяч тенге. В 2026 мы уже проводили мероприятие.'],
+    ['11 октября 2026 или 11 октября 2027, бюджет до 400 тысяч тенге.'],
+    ['11 октября. Альтернатива: 12 октября 2026, бюджет до 400 тысяч тенге.'],
+  ]) {
+    const result = await run(extraction({ date: '2026-10-11' }, { date_source: '11 октября' }), messages);
+    assert.equal(result.query, null);
+    assert.equal(result.draft.date, null);
+  }
+});
+
 test('invented dates, years and budgets never become an executable query', async () => {
   for (const [draft, extras, messages] of [
     [{ date: '2026-10-11' }, { date_source: '10 октября 2026' }, [fullMessage]],
