@@ -23,7 +23,25 @@ export function evidenceOptions(description: string): string[] {
   const options = phrases.flatMap((sentence) => {
     if ([...sentence.trim()].length <= 220) return [sentence.trim()];
     // Long sentences can still contain a complete, continuous clause.
-    return sentence.split(/[,;:]\s*/u).map(s => s.trim());
+    return sentence.split(/[,;:•]\s*/u).map(s => s.trim());
+  }).flatMap(fragment => {
+    // Some organizer descriptions are long unpunctuated lists. Keep continuous
+    // word-aligned excerpts instead of dropping the entire source or inventing text.
+    const chunks: string[] = [];
+    let rest = fragment.trim();
+    while ([...rest].length > 220) {
+      const prefix = [...rest].slice(0, 220).join('');
+      const boundary = prefix.lastIndexOf(' ');
+      if (boundary < 0) {
+        const nextSpace = rest.indexOf(' ');
+        rest = nextSpace < 0 ? '' : rest.slice(nextSpace + 1).trim();
+        continue;
+      }
+      chunks.push(rest.slice(0, boundary));
+      rest = rest.slice(boundary + 1).trim();
+    }
+    if (rest) chunks.push(rest);
+    return chunks;
   }).filter(s => s.length >= 18 && [...s].length <= 220);
   return [...new Set(options)].slice(0, 60);
 }
@@ -33,7 +51,7 @@ function extractQuote(query: Query, description: string): string | null {
   const scored = options.map((quote, index) => {
     const t = quote.toLowerCase().replace(/ё/gu, 'е');
     const format = (markers[query.event_format] ?? []).filter(r => r.test(t)).length;
-    const concrete = /двуязыч|телевид|телеканал|радиостанц|акт[её]р|танц|развлеч|флорист|декор|букет|банкет|вместим|оборудован|фотограф|съем|монтаж|репертуар|инструмент|мастер-класс|импровизац|юмор|\d/iu.test(t);
+    const concrete = /двуязыч|телевид|телеканал|радиостанц|акт[её]р|танц|развлеч|флорист|декор|букет|банкет|вместим|оборудован|фотограф|съем|монтаж|репертуар|инструмент|мастер-класс|импровизац|юмор|сценари|интерактив|панорам|террас|вид на|ресторан|кейтеринг|парковк|цветоч|\d/iu.test(t);
     const language = query.language !== null && t.includes(query.language.toLowerCase());
     const promotional = /лучши|идеальн|безупреч|востребован|профессиональн|ответственн/iu.test(t);
     return { quote, index, score: format * 10 + Number(language) * 4 + Number(concrete) * 3 - Number(promotional) * 2 };

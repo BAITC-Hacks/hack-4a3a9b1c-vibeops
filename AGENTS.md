@@ -53,4 +53,4 @@
 - Нурбол: client/**, tests/ui/**, docs/ui-notes.md.
 - По прямому поручению Арлана общий каркас создан в codex/scaffold и передаётся Никите после merge. После передачи не менять его зону без согласования.
 - Команды: npm ci; npm run dev; npm run typecheck; npm test; npm run build; npm start.
-- POST /api/recommend в каркасе намеренно возвращает 501; Никита заменяет его реальной логикой и соответствующий тест. Не выдавать это за завершённый продукт.
+- POST /api/recommend подключён к validation → selectVendors → explainSelection. После исправления конфликтов PR #6 не возвращаться к сырому Vendor[] или 501. UI использует RecommendResponse; необязательные поля hours/language нормализуются в null.
