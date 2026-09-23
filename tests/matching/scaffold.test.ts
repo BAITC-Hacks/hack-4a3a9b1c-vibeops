@@ -24,7 +24,7 @@ async function serve(server: Server) {
   return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 }
 
-test('scaffold serves real health/options and explicitly marks unfinished matching', async t => {
+test('API serves real health/options and rejects invalid recommendation input', async t => {
   const server = createServer(createApp(loadCatalog('data/vendors.csv')));
   const url = await serve(server); t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
   const health = await (await fetch(`${url}/api/health`)).json();
@@ -33,7 +33,7 @@ test('scaffold serves real health/options and explicitly marks unfinished matchi
   assert.deepEqual(options.cities, ['Алматы', 'Астана', 'Зарубежье']);
   assert.equal(options.date_min, '2026-09-23'); assert.equal(options.categories.length, 17);
   const result = await fetch(`${url}/api/recommend`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(result.status, 501); assert.equal((await result.json()).error.code, 'NOT_IMPLEMENTED');
+  assert.equal(result.status, 422); assert.equal((await result.json()).error.code, 'VALIDATION_ERROR');
   const malformed = await fetch(`${url}/api/recommend`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400); assert.equal((await malformed.json()).error.code, 'MALFORMED_JSON');
 });

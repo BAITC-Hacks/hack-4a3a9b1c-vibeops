@@ -63,3 +63,7 @@ npx vitest run --config tests/ui/vitest.config.mts
 В интеграционной ветке codex/integrate-ui объединён feat/ui с main 249c861 (включая AI v3). Добавлены закреплённые devDependencies vitest 3.2.7, jsdom 26 и @testing-library/react 16 и команда npm run test:ui. Выполнены npm run build, npm test (21 проверка) и npm run test:ui (24 проверки), все успешно.
 
 Backend Никиты 98b7300 отдельно проверен и НЕ включён: возвращает Vendor[] вместо RecommendResponse, language:null исключает все профили D1, duration_hours расходится с hours, отсутствует валидация. На main до исправления остаётся явный 501; UI корректно отображает ошибку. Полный подбор ещё не подтверждён.
+
+## Интеграция backend PR #6
+
+После исправления конфликтов и контракта проверены production UI: D1 — три реальные карточки и LLM-объяснения; D4 — категории нет в городе; D5 — никто не подходит. Все D1–D6 также проверены HTTP-тестами на исходном CSV; production API D2/D3/D6 вернул live LLM. 32 backend/AI + 24 UI теста прошли. Ранее описанные 501 и несовместимость Vendor[] относятся к предыдущему состоянию и исправлены.
