@@ -167,11 +167,9 @@ function currentMoney(messages: string[], source: string | null): { mentions: Mo
     if (!mentions.length) continue;
     if (index > sourceIndex) return { mentions, stale: sourceIndex >= 0 };
     if (index === sourceIndex && source) {
-      if (mentions.length > 1) return { mentions, stale: false };
-      const message = messages[index]!;
-      const start = message.indexOf(source);
-      const relevant = mentions.filter(item => item.index < start + source.length && item.end > start);
-      return { mentions: relevant, stale: false };
+      // The deterministic scanner owns amounts/currencies. A short model quote
+      // (e.g. "бюджет" or "30к") must not erase the explicit money in its message.
+      return { mentions, stale: false };
     }
   }
   return { mentions: [], stale: false };
@@ -272,7 +270,7 @@ async function finishBrief(raw: ExtractedBrief, catalog: Catalog, model: string,
       draft.budget_kzt = null;
       warnings.push(`Не удалось получить актуальный курс ${mention.currency}. Исходный бюджет: ${mention.amount.toLocaleString('ru-RU')} ${mention.currency}. Укажите максимальную сумму в тенге.`);
     }
-  } else if (mention && money.stale) {
+  } else if (mention && (money.stale || draft.budget_kzt === null)) {
     draft.budget_kzt = mention.amount;
   } else if (draft.budget_kzt !== null && (!raw.budget_source || !mention || mention.amount !== draft.budget_kzt)) {
     draft.budget_kzt = null;
