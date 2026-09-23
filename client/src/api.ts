@@ -1,4 +1,5 @@
 import type { ApiError, Query, RecommendResponse } from '../../shared/contracts';
+import type { AssistantBrief, AssistantComparison, AssistantDraft } from '../../shared/assistant';
 
 export interface CatalogOptions {
   cities: string[];
@@ -91,4 +92,47 @@ export async function recommend(query: Query, signal: AbortSignal): Promise<Reco
     throw new RequestError('Не удалось прочитать результат подбора. Повторите запрос.');
   }
   return result;
+}
+
+const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+const draftKeys = ['city', 'date', 'event_format', 'category', 'budget_kzt', 'hours', 'language'] as const;
+const validDraft = (value: unknown): value is AssistantDraft => record(value) &&
+  ['city', 'date', 'event_format', 'category', 'language'].every(key => value[key] === null || (text(value[key]) && value[key].length <= 100)) &&
+  ['budget_kzt', 'hours'].every(key => value[key] === null || (typeof value[key] === 'number' && Number.isFinite(value[key])));
+const validQuery = (value: unknown): value is Query => validDraft(value) &&
+  ['city', 'date', 'event_format', 'category', 'budget_kzt'].every(key => value[key as keyof Query] !== null) &&
+  validDate(value.date) && count(value.budget_kzt) && (value.hours === null || value.hours > 0);
+
+export async function prepareBrief(messages: string[], signal: AbortSignal): Promise<AssistantBrief> {
+  const result = await request<unknown>('/api/assistant/brief', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }), signal,
+  });
+  if (!record(result) || !validDraft(result.draft) || !text(result.summary) ||
+      !strings(result.questions) || !strings(result.preferences) || !strings(result.warnings) ||
+      result.source !== 'llm' || !text(result.model) ||
+      !(result.query === null || (validQuery(result.query) && draftKeys.every(key => (result.query as Query)[key] === (result.draft as AssistantDraft)[key])))) {
+    throw new RequestError('Не удалось прочитать ответ AI. Попробуйте уточнить запрос и отправить его снова.');
+  }
+  return result as AssistantBrief;
+}
+
+export async function comparePreferences(query: Query, preferences: string[], signal: AbortSignal): Promise<AssistantComparison> {
+  const result = await request<unknown>('/api/assistant/compare', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, preferences }), signal,
+  });
+  if (!record(result) || !Array.isArray(result.items) || result.items.length > 3 ||
+      !(result.source === 'llm' ? text(result.model) : result.source === 'not_needed' && result.model === null) ||
+      !result.items.every(item => {
+        if (!record(item) || !text(item.id) || !text(item.name) || !Array.isArray(item.evidence) || !strings(item.to_confirm)) return false;
+        const evidence = item.evidence;
+        const toConfirm = item.to_confirm;
+        if (!evidence.every(match => record(match) && text(match.preference) && preferences.includes(match.preference) && text(match.quote)) ||
+            !toConfirm.every(preference => preferences.includes(preference))) return false;
+        const covered = [...evidence.map(match => match.preference as string), ...toConfirm];
+        return new Set(covered).size === covered.length && preferences.every(preference => covered.includes(preference));
+      }) ||
+      new Set(result.items.map(item => item.id)).size !== result.items.length) {
+    throw new RequestError('Не удалось прочитать AI-сравнение. Подбор по условиям доступен ниже.');
+  }
+  return result as AssistantComparison;
 }

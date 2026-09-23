@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Card, Query, Reason, RecommendResponse } from '../../shared/contracts';
-import { getOptions, recommend, RequestError } from './api';
+import type { AssistantComparison } from '../../shared/assistant';
+import { comparePreferences, getOptions, recommend, RequestError } from './api';
 import type { CatalogOptions } from './api';
 import { DEMOS } from './demo';
+import Assistant from './Assistant';
 
 type FormValues = { city: string; date: string; event_format: string; category: string; budget_kzt: string; hours: string; language: string };
 const INITIAL: FormValues = { city: '', date: '2026-10-10', event_format: '', category: '', budget_kzt: '1000000', hours: '', language: '' };
@@ -42,7 +44,7 @@ function validate(values: FormValues, options: CatalogOptions): { query: Query |
   };
 }
 
-function VendorCard({ card, index }: { card: Card; index: number }) {
+function VendorCard({ card, index, comparison }: { card: Card; index: number; comparison?: AssistantComparison['items'][number] }) {
   return <article className="vendor-card" aria-labelledby={`vendor-${card.id}`}>
     <div className="card-top"><span className="card-category">{card.category}</span><span className="card-index">0{index + 1}</span></div>
     <h3 id={`vendor-${card.id}`}>{card.name}</h3>
@@ -50,6 +52,10 @@ function VendorCard({ card, index }: { card: Card; index: number }) {
     <p className="price"><span>от </span>{money(card.price_from_kzt)} <span>₸</span></p>
     <p className="price-caption">за мероприятие · итоговую стоимость нужно уточнить</p>
     <div className="explanation-block"><h4>Почему в подборке</h4><p>{card.explanation}</p></div>
+    {comparison && <div className="preference-evidence"><h4>Под ваши пожелания</h4>
+      {comparison.evidence.map((item, evidenceIndex) => <div className="preference-match" key={evidenceIndex}><strong>{item.preference}</strong><blockquote>«{item.quote}»</blockquote></div>)}
+      {comparison.to_confirm.length > 0 && <div className="preference-unknown"><h5>Нужно уточнить у подрядчика</h5><ul>{comparison.to_confirm.map((preference, preferenceIndex) => <li key={preferenceIndex}>{preference}</li>)}</ul><p>В описании не найдено достаточного основания.</p></div>}
+    </div>}
     <div className="facts">
       <span>{card.languages.join(' / ')}</span>
       <span>{card.max_hours === null ? 'Присутствие по часам не применимо' : `До ${card.max_hours} ч на площадке`}</span>
@@ -67,7 +73,9 @@ function VendorCard({ card, index }: { card: Card; index: number }) {
   </article>;
 }
 
-function Results({ result }: { result: RecommendResponse }) {
+function Results({ result, comparison, comparisonLoading, comparisonError, retryComparison }: {
+  result: RecommendResponse; comparison: AssistantComparison | null; comparisonLoading: boolean; comparisonError: string; retryComparison: () => void;
+}) {
   const { outcome, summary, query, explanation } = result;
   const title = outcome === 'matched' ? 'Ваша подборка' : outcome === 'no_category_in_city' ? 'В этом городе такой категории нет' : 'Никто не проходит по условиям';
   const busy = summary.rejected.filter(item => item.reasons.includes('busy_date'));
@@ -79,8 +87,11 @@ function Results({ result }: { result: RecommendResponse }) {
     <p className="result-message" role="status">{summary.message}</p>
     {(explanation.mode === 'fallback' || explanation.mode === 'mixed' || explanation.warning) &&
       <div className="notice" role="status"><strong>{explanation.mode === 'mixed' ? 'Часть объяснений подготовлена без AI.' : explanation.mode === 'fallback' ? 'Объяснения подготовлены без AI.' : 'Примечание к объяснениям.'}</strong>{' '}{explanation.warning || 'Показаны факты и фрагменты описаний из каталога.'}</div>}
+    {comparisonLoading && <div className="comparison-progress" role="status"><span className="spinner" aria-hidden="true" /><div><strong>AI сопоставляет ваши пожелания</strong><p>Подрядчики уже подобраны. Проверяем, что об их подходе сказано в описаниях.</p></div></div>}
+    {comparisonError && <div className="error-box" role="alert"><strong>AI-сравнение пока недоступно</strong><p>{comparisonError}</p><p>Подбор по дате, бюджету и остальным условиям сохранён.</p><button type="button" className="secondary" onClick={retryComparison}>Повторить AI-сравнение</button></div>}
+    {comparison?.items.length ? <div className="comparison-caption"><span aria-hidden="true">✳</span><p><strong>AI разобрал описания под ваш запрос.</strong> Цитаты ниже — основания для интерпретации AI. Это сведения из профилей, а не гарантия соответствия пожеланиям.</p></div> : null}
     {outcome === 'matched' ? <>
-      <div className="cards">{result.cards.map((card, index) => <VendorCard key={card.id} card={card} index={index} />)}</div>
+      <div className="cards">{result.cards.map((card, index) => <VendorCard key={card.id} card={card} index={index} comparison={comparison?.items.find(item => item.id === card.id)} />)}</div>
       <p className="availability-note">На выбранную дату эти подрядчики не отмечены занятыми в каталоге. Это не подтверждение бронирования. Стартовая цена не превышает указанный бюджет.</p>
     </> : <div className="empty-state">
       <span className="empty-mark" aria-hidden="true">{outcome === 'no_category_in_city' ? '∅' : '—'}</span>
@@ -121,6 +132,14 @@ export default function App() {
   const [result, setResult] = useState<RecommendResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeDemo, setActiveDemo] = useState<string | null>(null);
+  const [activePreferences, setActivePreferences] = useState<string[]>([]);
+  const [comparison, setComparison] = useState<AssistantComparison | null>(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState('');
+  const [comparisonRequest, setComparisonRequest] = useState<{ query: Query; preferences: string[]; cards: Card[] } | null>(null);
+  const comparisonController = useRef<AbortController | null>(null);
+  const comparisonSequence = useRef(0);
+  const workspace = useRef<HTMLDivElement | null>(null);
   const controller = useRef<AbortController | null>(null);
   const sequence = useRef(0);
 
@@ -141,17 +160,41 @@ export default function App() {
     return () => { disposed = true; window.clearTimeout(timer); abort.abort(); };
   }, [optionsAttempt]);
 
-  useEffect(() => () => { sequence.current += 1; controller.current?.abort(); }, []);
+  useEffect(() => () => { sequence.current += 1; controller.current?.abort(); comparisonSequence.current += 1; comparisonController.current?.abort(); }, []);
 
   const invalidate = () => {
     sequence.current += 1;
     controller.current?.abort();
+    comparisonSequence.current += 1; comparisonController.current?.abort();
+    setComparison(null); setComparisonError(''); setComparisonLoading(false); setComparisonRequest(null);
     setLoading(false); setResult(null); setError(''); setFields({});
   };
   const change = (key: keyof FormValues, value: string) => {
     invalidate(); setActiveDemo(null); setValues(previous => ({ ...previous, [key]: value }));
   };
-  const run = async (form: FormValues) => {
+  const runComparison = async (query: Query, preferences: string[], cards: Card[]) => {
+    comparisonController.current?.abort();
+    const requestId = ++comparisonSequence.current;
+    const abort = new AbortController(); comparisonController.current = abort;
+    setComparisonLoading(true); setComparisonError(''); setComparison(null);
+    let timedOut = false;
+    const timer = window.setTimeout(() => { timedOut = true; abort.abort(); }, 15_000);
+    try {
+      const response = await comparePreferences(query, preferences, abort.signal);
+      if (requestId !== comparisonSequence.current) return;
+      if (response.items.length !== cards.length || response.items.some(item => !cards.some(card => card.id === item.id && card.name === item.name))) {
+        throw new RequestError('AI вернул сравнение для других профилей. Повторите сравнение.');
+      }
+      setComparison(response);
+    } catch (failure) {
+      if (requestId !== comparisonSequence.current) return;
+      setComparisonError(timedOut ? 'AI не ответил за 15 секунд.' : failure instanceof Error ? failure.message : 'Не удалось сравнить пожелания.');
+    } finally {
+      window.clearTimeout(timer);
+      if (requestId === comparisonSequence.current) setComparisonLoading(false);
+    }
+  };
+  const run = async (form: FormValues, preferences?: string[]) => {
     if (!options) return;
     invalidate();
     const validation = validate(form, options);
@@ -165,7 +208,13 @@ export default function App() {
     setLoading(true);
     try {
       const response = await recommend(validation.query, abort.signal);
-      if (sequence.current === requestId) setResult(response);
+      if (sequence.current === requestId) {
+        setResult(response);
+        if (preferences?.length && response.cards.length) {
+          setComparisonRequest({ query: validation.query, preferences, cards: response.cards });
+          void runComparison(validation.query, preferences, response.cards);
+        }
+      }
     } catch (failure) {
       if (sequence.current !== requestId) return;
       if (timedOut) setError('Сервер не ответил за 15 секунд. Попробуйте повторить подбор. Это ошибка соединения, а не отсутствие кандидатов.');
@@ -176,24 +225,26 @@ export default function App() {
       if (sequence.current === requestId) setLoading(false);
     }
   };
-  const submit = (event: FormEvent) => { event.preventDefault(); void run(values); };
+  const submit = (event: FormEvent) => { event.preventDefault(); void run(values, activePreferences); };
   const fieldError = (key: keyof FormValues) => fields[key] ? <span className="field-error" id={`${key}-error`}>{fields[key]}</span> : null;
   const attributes = (key: keyof FormValues) => ({ id: key, name: key, 'aria-invalid': !!fields[key], 'aria-describedby': fields[key] ? `${key}-error` : undefined });
 
   return <>
     <header className="site-header"><div className="header-inner"><a className="brand" href="#main"><span className="brand-mark" aria-hidden="true">f.</span>firebird<span className="brand-separator">/</span><span className="brand-description">подрядчики для событий</span></a><span className="team-label">VibeOps · HackAlem AI</span></div></header>
     <main id="main">
-      <section className="intro"><p className="eyebrow">Меньше поиска. Больше ясности.</p><h1>Кто подойдёт<br /><span>вашему событию?</span></h1><p className="intro-text">До трёх подрядчиков под ваши условия — с конкретным объяснением, почему каждый оказался в подборке.</p></section>
-      <div className="workspace">
-        <aside className="search-panel" aria-labelledby="search-title"><div className="panel-title"><span className="step">01</span><h2 id="search-title">Ваше мероприятие</h2></div>
+      <section className="intro"><p className="eyebrow">Ваше событие начинается с разговора</p><h1>Есть идея события.<br /><span>Найдём, с кем её воплотить.</span></h1><p className="intro-text">AI превратит ваше описание в условия подбора и поможет сравнить до трёх подрядчиков по тому, что важно именно вам.</p></section>
+      <Assistant canSearch={!!options && !loading} onActivity={() => { invalidate(); setActiveDemo(null); setActivePreferences([]); }} onConfirm={(query, preferences) => { const form = fromQuery(query); setValues(form); setActiveDemo(null); setActivePreferences(preferences); void run(form, preferences); workspace.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }} />
+      <div className="workspace" ref={workspace}>
+        <aside className="search-panel" aria-labelledby="search-title"><div className="panel-title"><span className="step">↙</span><h2 id="search-title">Ваше мероприятие</h2></div><p className="manual-hint">Можно задать условия вручную или изменить подготовленные AI.</p>
           {optionsError ? <div className="error-box" role="alert"><p>{optionsError}</p><button className="secondary" onClick={() => setOptionsAttempt(value => value + 1)}>Загрузить каталог снова</button></div> : !options ? <p className="catalog-loading" role="status">Загружаем параметры каталога…</p> : null}
           <form onSubmit={submit} noValidate>
             <fieldset disabled={!options}><legend className="sr-only">Параметры подбора</legend>
               <label htmlFor="city">Город</label><select {...attributes('city')} value={values.city} onChange={event => change('city', event.target.value)}><option value="" disabled>Выберите город</option>{options?.cities.map(value => <option key={value}>{value}</option>)}</select>{fieldError('city')}
               <label htmlFor="event_format">Формат мероприятия</label><select {...attributes('event_format')} value={values.event_format} onChange={event => change('event_format', event.target.value)}><option value="" disabled>Выберите формат</option>{options?.event_formats.map(value => <option key={value}>{value}</option>)}</select>{fieldError('event_format')}
-              <label htmlFor="category">Кого ищем</label><select {...attributes('category')} value={values.category} onChange={event => change('category', event.target.value)}><option value="" disabled>Выберите категорию</option>{options?.categories.map(value => <option key={value}>{value}</option>)}</select>{fieldError('category')}
+              <label htmlFor="category">Кого ищем</label><select {...attributes('category')} value={values.category} onChange={event => change('category', event.target.value)}><option value="" disabled>Выберите категорию</option>{values.category && options && !options.categories.includes(values.category) && <option value={values.category}>{values.category} · нет в каталоге</option>}{options?.categories.map(value => <option key={value}>{value}</option>)}</select>{fieldError('category')}
               <div className="form-row"><div><label htmlFor="date">Дата</label><input {...attributes('date')} type="date" min={options?.date_min} max={options?.date_max} value={values.date} onChange={event => change('date', event.target.value)} />{fieldError('date')}</div><div><label htmlFor="budget_kzt">Бюджет, ₸</label><input {...attributes('budget_kzt')} type="number" min="0" step="1" inputMode="numeric" value={values.budget_kzt} onChange={event => change('budget_kzt', event.target.value)} />{fieldError('budget_kzt')}</div></div>
               <p className="field-hint">Бюджет на одного подрядчика за мероприятие.</p>
+              {activePreferences.length > 0 && <p className="field-hint">Пожелания для AI-сравнения: {activePreferences.join('; ')}.</p>}
               <div className="optional-heading">Дополнительные условия <span>необязательно</span></div>
               <div className="form-row"><div><label htmlFor="language">Язык</label><select {...attributes('language')} value={values.language} onChange={event => change('language', event.target.value)}><option value="">Любой</option>{options?.languages.map(value => <option key={value}>{value}</option>)}</select>{fieldError('language')}</div><div><label htmlFor="hours">Длительность, ч</label><input {...attributes('hours')} type="number" min="0.1" step="any" inputMode="decimal" placeholder="Не задана" value={values.hours} onChange={event => change('hours', event.target.value)} />{fieldError('hours')}</div></div>
               <button type="submit" className="primary" disabled={loading || !options}>{loading ? 'Подбираем…' : 'Подобрать подрядчиков'}<span aria-hidden="true">↗</span></button>
@@ -203,10 +254,10 @@ export default function App() {
         </aside>
         <div className="output-panel" aria-busy={loading}>
           <section className="demo-section" aria-labelledby="demo-title"><div className="demo-heading"><h2 id="demo-title">Попробуйте на примере</h2><span>Запросы к текущему каталогу</span></div><div className="demo-grid">
-            {DEMOS.map(demo => <button key={demo.id} type="button" disabled={!options} aria-pressed={activeDemo === demo.id} className={`demo-button ${activeDemo === demo.id ? 'selected' : ''}`} onClick={() => { const form = fromQuery(demo.query); setValues(form); setActiveDemo(demo.id); void run(form); }}><span className="demo-id">{demo.id}</span><span><strong>{demo.label}</strong><small>{demo.description}</small></span></button>)}
+            {DEMOS.map(demo => <button key={demo.id} type="button" disabled={!options} aria-pressed={activeDemo === demo.id} className={`demo-button ${activeDemo === demo.id ? 'selected' : ''}`} onClick={() => { const form = fromQuery(demo.query); setValues(form); setActiveDemo(demo.id); setActivePreferences([]); void run(form); }}><span className="demo-id">{demo.id}</span><span><strong>{demo.label}</strong><small>{demo.description}</small></span></button>)}
           </div></section>
           {error && <div className="error-box" role="alert"><strong>Подбор не выполнен</strong><p>{error}</p></div>}
-          {loading ? <div className="loading-state" role="status"><span className="spinner" aria-hidden="true" /><h2>Проверяем условия и готовим объяснения</h2><p>Учитываем дату, бюджет и особенности мероприятия.</p></div> : result ? <Results result={result} /> : !error && <section className="welcome-state"><span className="welcome-symbol" aria-hidden="true">✳</span><h2>Выбор с понятными основаниями</h2><p>Задайте параметры слева или выберите пример. Здесь появятся подходящие подрядчики и причины выбора.</p><div className="welcome-points"><span>Учитываем занятость</span><span>Объясняем различия</span><span>Показываем ограничения</span></div></section>}
+          {loading ? <div className="loading-state" role="status"><span className="spinner" aria-hidden="true" /><h2>Проверяем условия и готовим объяснения</h2><p>Учитываем дату, бюджет и особенности мероприятия.</p></div> : result ? <Results result={result} comparison={comparison} comparisonLoading={comparisonLoading} comparisonError={comparisonError} retryComparison={() => { if (comparisonRequest) void runComparison(comparisonRequest.query, comparisonRequest.preferences, comparisonRequest.cards); }} /> : !error && <section className="welcome-state"><span className="welcome-symbol" aria-hidden="true">✳</span><h2>Здесь появится ваша подборка</h2><p>Начните с AI-помощника выше или задайте условия в форме. Покажем кандидатов, основания выбора и вопросы для обсуждения.</p><div className="welcome-points"><span>Учитываем занятость</span><span>Объясняем различия</span><span>Показываем ограничения</span></div></section>}
         </div>
       </div>
       <footer className="site-footer"><span>Firebird · прототип команды VibeOps</span><span>Анонимизированный каталог. Только рекомендации.</span></footer>

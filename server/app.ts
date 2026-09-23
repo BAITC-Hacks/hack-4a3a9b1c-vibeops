@@ -5,11 +5,17 @@ import { catalogOptions, type Catalog } from './catalog.js';
 import type { ApiError } from '../shared/contracts.js';
 import { recommend } from './recommend.js';
 import { QueryValidationError } from './validation.js';
+import { AssistantError, prepareBrief } from './explanations/assistant-brief.js';
+import { comparePreferences } from './explanations/assistant-compare.js';
 
-export function createApp(catalog: Catalog | null) {
+type AssistantHandlers = { brief: typeof prepareBrief; compare: typeof comparePreferences };
+
+export function createApp(catalog: Catalog | null, assistant: AssistantHandlers = { brief: prepareBrief, compare: comparePreferences }) {
   const app = express();
 
   app.disable('x-powered-by');
+  // Up to 8000 decoded characters, including Unicode JSON escape sequences.
+  app.use('/api/assistant', express.json({ limit: '64kb' }));
   app.use(express.json({ limit: '16kb' }));
 
   const error = (code: string, message: string): ApiError => ({
@@ -66,6 +72,20 @@ export function createApp(catalog: Catalog | null) {
   }
   });
 
+  for (const action of ['brief', 'compare'] as const) {
+    app.post(`/api/assistant/${action}`, async (req, res, next) => {
+      if (!catalog) {
+        res.status(503).json(error('DATASET_UNAVAILABLE', 'Каталог недоступен.'));
+        return;
+      }
+      try {
+        res.json(await assistant[action](catalog, req.body));
+      } catch (failure) {
+        next(failure);
+      }
+    });
+  }
+
   app.use('/api', (_req, res) => {
     res.status(404).json(
       error('NOT_FOUND', 'API-маршрут не найден.')
@@ -83,7 +103,10 @@ export function createApp(catalog: Catalog | null) {
   }
 
   const handleError: ErrorRequestHandler = (err, _req, res, _next) => {
-console.error(err);
+    if (err instanceof AssistantError) {
+      res.status(err.status).json({ error: { code: err.code, message: err.message, fields: err.fields } });
+      return;
+    }
     if (err instanceof QueryValidationError) {
       res.status(422).json({ error: { code: err.code, message: err.message, fields: err.fields } });
       return;
